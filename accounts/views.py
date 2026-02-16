@@ -1,5 +1,6 @@
 import face_recognition
 import base64
+import logging
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.core.files.base import ContentFile
@@ -19,6 +20,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Count, Sum, Avg, Q
 from django.db.models.functions import TruncDate
+
+logger = logging.getLogger(__name__)
 
 def home(request):
     schools_count = Principal.objects.count()
@@ -96,7 +99,7 @@ def principal_dashboard(request):
     
     total_teachers = teachers.count()
     absent_count = total_teachers - present_today_count
-    print(f"DEBUG: Total={total_teachers}, Present={present_today_count}, Absent={absent_count}")
+    logger.debug("Dashboard stats: Total=%d, Present=%d, Absent=%d", total_teachers, present_today_count, absent_count)
     
     return render(request, 'principal_dashboard.html', {
         'teachers': teachers,
@@ -305,7 +308,7 @@ def teacher_dashboard(request):
             'active_session': active_session
         })
     except Exception as e:
-        print(e)
+        logger.exception("Error loading teacher dashboard")
         return redirect('home')
 
 @login_required
@@ -455,7 +458,7 @@ def teacher_profile(request):
 
         return render(request, 'teacher_profile.html', context)
     except Exception as e:
-        print(e)
+        logger.exception("Error loading teacher profile")
         return redirect('home')
 
 @login_required
@@ -597,7 +600,7 @@ def end_class(request):
         
         return redirect('teacher_dashboard')
     except Exception as e:
-        print(e)
+        logger.exception("Error ending class")
         return redirect('teacher_dashboard')
 
 @login_required
@@ -653,7 +656,7 @@ def update_live_attendance(request):
                 stored_emb = np.load(embedding_path)
             else:
                 # Fallback: Try to create embedding from existing UserImages
-                print(f"Embedding not found for {request.user.username}, attempting to generate from stored image.")
+                logger.info("Embedding not found for %s, attempting to generate from stored image.", request.user.username)
                 
                 # Ensure directory exists first!
                 os.makedirs(user_dir, exist_ok=True)
@@ -674,11 +677,11 @@ def update_live_attendance(request):
                             stored_emb = encodings[0]
                             # Save it for future use!
                             np.save(embedding_path, stored_emb)
-                            print(f"Generated and saved new embedding for {request.user.username}")
+                            logger.info("Generated and saved new embedding for %s", request.user.username)
                         else:
-                            print("No face found in stored UserImage")
+                            logger.warning("No face found in stored UserImage")
                     except Exception as e:
-                        print(f"Error generating fallback embedding: {e}")
+                        logger.exception("Error generating fallback embedding")
                 
             if stored_emb is None:
                  return JsonResponse({'status': 'error', 'message': 'Registration data missing. Please re-register.'})
@@ -704,7 +707,7 @@ def update_live_attendance(request):
                 return JsonResponse({'status': 'warning', 'message': 'Unknown face detected'})
 
         except Exception as e:
-            print(f"Update error: {e}")
+            logger.exception("Live attendance update error")
             return JsonResponse({'status': 'error', 'message': str(e)})
             
     return JsonResponse({'status': 'error', 'message': 'Invalid method'})
@@ -778,9 +781,7 @@ def view_teacher_reports(request, teacher_id):
         
         return render(request, 'teacher_reports.html', context)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Error viewing reports: {e}")
+        logger.exception("Error viewing reports")
         return redirect('principal_dashboard')
 
 @login_required
@@ -1009,10 +1010,8 @@ def principal_analysis(request):
         }
         return render(request, 'principal_analysis.html', context)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("Principal analysis error")
         messages.error(request, f"Error loading analysis: {str(e)}")
-        print(f"Analysis error: {e}")
         return redirect('principal_dashboard')
 
 @login_required

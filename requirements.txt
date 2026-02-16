@@ -16,3 +16,6 @@ sqlparse==0.5.5
 
 # Environment Configuration
 python-decouple==3.8
+
+# PostgreSQL Driver
+psycopg2-binary==2.9.10

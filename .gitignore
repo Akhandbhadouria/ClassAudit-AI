@@ -41,6 +41,7 @@ staticfiles/
 
 # ── Django ──
 *.log
+app.log
 local_settings.py
 
 # ── Generated reports ──
