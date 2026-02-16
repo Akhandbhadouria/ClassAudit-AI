@@ -1,6 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 import datetime
+import os
+import shutil
 
 
 
@@ -83,3 +87,20 @@ class ClassSession(models.Model):
 
     def __str__(self):
         return f"{self.teacher.name} - {self.timetable.subject if self.timetable else 'Extra Class'} - {self.start_time.date()}"
+
+
+# ── Signal: Auto-delete User and face data when Teacher is deleted ──
+@receiver(post_delete, sender=Teacher)
+def delete_teacher_user_and_data(sender, instance, **kwargs):
+    """When a Teacher is deleted, also remove the linked User and their face embeddings."""
+    user = instance.user
+    username = user.username
+
+    # Delete face embedding data from disk
+    from django.conf import settings as app_settings
+    data_dir = os.path.join(app_settings.BASE_DIR, "data", "users", username)
+    if os.path.exists(data_dir):
+        shutil.rmtree(data_dir)
+
+    # Delete the User (this also cascades to UserImages via ForeignKey)
+    user.delete()

@@ -1,0 +1,50 @@
+# ── Environment & Secrets ──
+.env
+*.env
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── Virtual Environments ──
+venv/
+.venv/
+env/
+
+# ── Database ──
+db.sqlite3
+db.sqlite3-journal
+
+# ── Face Embedding Data (SENSITIVE) ──
+data/users/
+
+# ── Media uploads ──
+media/
+user_faces/
+
+# ── Static files (collected) ──
+staticfiles/
+
+# ── macOS ──
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Django ──
+*.log
+local_settings.py
+
+# ── Generated reports ──
+defaulter_report.csv
+
+# ── Live attendance mini (sub-project venv) ──
+live-attendance-mini/venv/

@@ -13,9 +13,9 @@ import cv2
 from .utils.face_embedding import get_embedding 
 from .utils.face_matcher import match_face
 from django.conf import settings 
-from django.contrib.auth import authenticate, login 
+from django.contrib.auth import authenticate, login, logout as auth_logout 
 from django.contrib.auth.decorators import login_required 
-from django.views.decorators.csrf import csrf_exempt
+
 from django.contrib import messages
 from django.db.models import Count, Sum, Avg, Q
 from django.db.models.functions import TruncDate
@@ -31,7 +31,11 @@ def home(request):
         'sessions_count': sessions_count
     })
 
-@csrf_exempt
+@login_required
+def logout_view(request):
+    auth_logout(request)
+    return redirect('home')
+
 def principal_register(request):
     if request.method == 'POST':
         username = request.POST['username']
@@ -118,13 +122,12 @@ def teacher_login_password(request):
     
     return render(request, 'teacher_login.html')
 
-@csrf_exempt
 @login_required
 def add_teacher(request):
     # Check if user is a principal
     try:
         principal = request.user.principal
-    except:
+    except (Principal.DoesNotExist, AttributeError):
         return JsonResponse({'status': 'error', 'message': 'You must be logged in as a principal to add teachers.'})
     
     if request.method == 'POST':
@@ -195,7 +198,6 @@ def add_teacher(request):
 
     return render(request, 'add_teacher.html')
 
-@csrf_exempt
 @login_required
 def delete_teacher(request, teacher_id):
     if request.method == 'POST':
@@ -220,7 +222,6 @@ def delete_teacher(request, teacher_id):
     
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'})
 
-@csrf_exempt
 def login_user(request):
     if request.method == 'POST':
         username = request.POST['username']
@@ -469,10 +470,8 @@ def previous_records_teacher(request):
             'sessions': all_sessions
         }
         return render(request, 'previous_records_teacher.html', context)
-    except:
+    except (Teacher.DoesNotExist, AttributeError):
         return redirect('home')
-@csrf_exempt
-
 @login_required
 def mark_attendance(request):
     if request.method == 'POST':
@@ -614,10 +613,9 @@ def live_class_monitoring(request):
         session.save()
             
         return render(request, 'live_class_monitoring.html', {'session': session})
-    except:
+    except (Teacher.DoesNotExist, AttributeError):
         return redirect('home')
 
-@csrf_exempt
 @login_required
 def update_live_attendance(request):
     if request.method == 'POST':
@@ -1155,44 +1153,51 @@ def export_defaulter_csv(request):
                 consecutive_missed = 0
         
         # ══════════════════════════════════════
-        # NEW RISK SCORE (Max 14)
+        # RISK SCORE (Max 14)
+        # Fair thresholds adjusted for low face-detection accuracy
         # ══════════════════════════════════════
         risk_score = 0
         
         # Factor 1: Sustained Low Consistency (max 4)
-        if consistency < 70:
-            risk_score += 2
-        elif consistency < 75 and prev_consistency < 75:
+        if consistency < 40:
+            risk_score += 4
+        elif consistency < 55 and prev_consistency < 55:
+            risk_score += 3
+        elif consistency < 65:
             risk_score += 1
         
         # Factor 2: Low Completion Rate (max 3)
-        if completion_rate < 75:
+        if completion_rate < 60:
+            risk_score += 3
+        elif completion_rate < 75:
             risk_score += 2
         elif completion_rate < 85:
             risk_score += 1
         
         # Factor 3: Attendance Gap Ratio (max 3)
-        if gap_ratio > 40:
+        if gap_ratio > 60:
+            risk_score += 3
+        elif gap_ratio > 45:
             risk_score += 2
-        elif gap_ratio > 25:
-            risk_score += 2
+        elif gap_ratio > 30:
+            risk_score += 1
         
         # Factor 4: Repeated Absence Pattern (max 2)
         if max_consecutive >= 3 or missed_classes >= 5:
             risk_score += 2
+        elif max_consecutive >= 2 or missed_classes >= 3:
+            risk_score += 1
         
         # Factor 5: Performance Decline Trend (max 2)
-        if prev_consistency > 0 and consistency < (prev_consistency - 15):
+        if prev_consistency > 0 and consistency < (prev_consistency - 25):
             risk_score += 2
+        elif prev_consistency > 0 and consistency < (prev_consistency - 15):
+            risk_score += 1
         
-        # ── Classification ──
-        is_defaulter = False
-        if risk_score >= 30 or consistency < 65:
-            is_defaulter = True
-        
-        if is_defaulter:
+        # ── Classification (max score = 14) ──
+        if risk_score >= 10 or consistency < 40:
             status = 'DEFAULTER'
-        elif risk_score >= 12:
+        elif risk_score >= 6:
             status = 'Needs Attention'
         else:
             status = 'Good Standing'
@@ -1216,7 +1221,7 @@ def teacher_help(request):
     try:
         teacher = request.user.teacher
         return render(request, 'teacher_help.html', {'teacher': teacher})
-    except:
+    except (Teacher.DoesNotExist, AttributeError):
         return redirect('home')
 
 @login_required
@@ -1350,47 +1355,59 @@ def teacher_analysis(request, teacher_id):
                 consecutive_missed = 0
 
         # ══════════════════════════════════════
-        # NEW RISK SCORE (Max 14)
+        # RISK SCORE (Max 14)
+        # Fair thresholds adjusted for low face-detection accuracy
         # ══════════════════════════════════════
         risk_score = 0
 
         # Factor 1: Sustained Low Consistency (max 4)
-        if consistency < 70:
+        if consistency < 40:
             risk_score += 4
-        elif consistency < 75 and prev_consistency < 75:
+        elif consistency < 55 and prev_consistency < 55:
             risk_score += 3
+        elif consistency < 65:
+            risk_score += 1
 
         # Factor 2: Low Completion Rate (max 3)
-        if completion_rate < 75:
+        if completion_rate < 60:
             risk_score += 3
-        elif completion_rate < 85:
+        elif completion_rate < 75:
             risk_score += 2
+        elif completion_rate < 85:
+            risk_score += 1
 
         # Factor 3: Attendance Gap Ratio (max 3)
-        if gap_ratio > 40:
+        if gap_ratio > 60:
             risk_score += 3
-        elif gap_ratio > 25:
+        elif gap_ratio > 45:
             risk_score += 2
+        elif gap_ratio > 30:
+            risk_score += 1
 
         # Factor 4: Repeated Absence Pattern (max 2)
         if max_consecutive >= 3 or missed_classes >= 5:
             risk_score += 2
+        elif max_consecutive >= 2 or missed_classes >= 3:
+            risk_score += 1
 
         # Factor 5: Performance Decline Trend (max 2)
         decline_detected = False
-        if prev_consistency > 0 and consistency < (prev_consistency - 15):
+        if prev_consistency > 0 and consistency < (prev_consistency - 25):
             risk_score += 2
+            decline_detected = True
+        elif prev_consistency > 0 and consistency < (prev_consistency - 15):
+            risk_score += 1
             decline_detected = True
 
         max_risk = 14
         # Performance score: inverse of risk (higher = better)
         performance_score = max(0, round(100 - (risk_score / max_risk) * 100))
 
-        # Classification
-        if risk_score >= 30 or consistency < 65:
+        # Classification (max score = 14)
+        if risk_score >= 10 or consistency < 40:
             risk_category = 'Defaulter'
             risk_color = '#ef4444'
-        elif risk_score >= 12:
+        elif risk_score >= 6:
             risk_category = 'Needs Attention'
             risk_color = '#f59e0b'
         else:

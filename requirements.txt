@@ -13,3 +13,6 @@ pillow==12.1.0
 # Django Dependencies
 asgiref==3.11.1
 sqlparse==0.5.5
+
+# Environment Configuration
+python-decouple==3.8

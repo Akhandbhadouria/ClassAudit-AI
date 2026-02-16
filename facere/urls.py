@@ -16,10 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from django.conf import settings
+from django.conf.urls.static import static
 from accounts import views
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('logout/', views.logout_view, name='logout'),
     path('principal/register/', views.principal_register, name='principal_register'),
     path('principal/login/', views.principal_login_view, name='principal_login_view'),
     path('principal/dashboard/', views.principal_dashboard, name='principal_dashboard'),
@@ -44,4 +47,4 @@ path('principal/teacher-analysis/<int:teacher_id>/', views.teacher_analysis, nam
     path('teacher/records/', views.previous_records_teacher, name='previous_records_teacher'),
     path('teacher/help/', views.teacher_help, name='teacher_help'),
     path('admin/', admin.site.urls),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
