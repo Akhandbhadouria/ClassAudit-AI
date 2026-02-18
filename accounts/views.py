@@ -1,3 +1,4 @@
+import logging
 import face_recognition
 import base64
 from django.shortcuts import render, redirect
@@ -15,10 +16,26 @@ from .utils.face_matcher import match_face
 from django.conf import settings 
 from django.contrib.auth import authenticate, login, logout as auth_logout 
 from django.contrib.auth.decorators import login_required 
+from functools import wraps
 
 from django.contrib import messages
 from django.db.models import Count, Sum, Avg, Q
 from django.db.models.functions import TruncDate
+
+logger = logging.getLogger(__name__)
+
+
+def principal_required(view_func):
+    """Decorator that ensures the user is logged in AND is a Principal."""
+    @wraps(view_func)
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        if not hasattr(request.user, 'principal'):
+            messages.error(request, 'Access denied. Principal account required.')
+            return redirect('home')
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
 
 def home(request):
     schools_count = Principal.objects.count()
@@ -68,7 +85,7 @@ def principal_login_view(request):
              return render(request, 'principal_login.html', {'error': 'Invalid credentials'})
     return render(request, 'principal_login.html')
 
-@login_required
+@principal_required
 def principal_dashboard(request):
     from collections import defaultdict
     
@@ -96,7 +113,7 @@ def principal_dashboard(request):
     
     total_teachers = teachers.count()
     absent_count = total_teachers - present_today_count
-    print(f"DEBUG: Total={total_teachers}, Present={present_today_count}, Absent={absent_count}")
+    logger.debug("Dashboard stats: Total=%d, Present=%d, Absent=%d", total_teachers, present_today_count, absent_count)
     
     return render(request, 'principal_dashboard.html', {
         'teachers': teachers,
@@ -122,7 +139,7 @@ def teacher_login_password(request):
     
     return render(request, 'teacher_login.html')
 
-@login_required
+@principal_required
 def add_teacher(request):
     # Check if user is a principal
     try:
@@ -152,43 +169,41 @@ def add_teacher(request):
             if User.objects.filter(username=username).exists():
                 return JsonResponse({'status': 'error', 'message': f'Username "{username}" is already taken. Please choose a different username.'})
 
-            # Create User with provided password
-            user = User.objects.create_user(username=username, password=password) 
-            
-            # Create Teacher linked to Principal with department
-            Teacher.objects.create(user=user, principal=principal, name=name, department=department)
-
-            # --- NEW REGISTRATION LOGIC START ---
+            # --- Process face image FIRST (before creating DB records) ---
             face_data_str = face_image_data.split(",")[1]
             image_data = base64.b64decode(face_data_str)
-            
-            # 1. Save Face Image to UserImages (for UI display)
-            face_image = ContentFile(image_data, name=f'{username}_face.jpg')
-            UserImages.objects.create(user=user, face_image=face_image)
 
-            # 2. Process for Embedding (New Logic)
-            # Convert base64 to OpenCV image
+            # Convert base64 to OpenCV image and extract embedding
             nparr = np.frombuffer(image_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-            # Get embedding
             emb = get_embedding(frame)
-            
-            if emb is None:
-                # If we fail to get embedding, we might want to rollback user creation
-                # But for now, let's just warn or handle appropriately. 
-                # Since face_recognition in views.py (old logic) might handle it differently.
-                # But get_embedding uses the same library.
-                pass 
 
-            if emb is not None:
-                # Save embedding to disk: project_root/data/users/{username}/embeddings.npy
-                # We'll use username as the identifier
+            # If embedding fails, abort BEFORE creating any database records
+            if emb is None:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Could not detect a face in the captured image. Please retake the photo with better lighting and ensure only one face is visible.'
+                })
+
+            # --- Face verified, now create all records ---
+            from django.db import transaction
+
+            with transaction.atomic():
+                # Create User
+                user = User.objects.create_user(username=username, password=password)
+
+                # Create Teacher linked to Principal
+                Teacher.objects.create(user=user, principal=principal, name=name, department=department)
+
+                # Save Face Image to UserImages (for UI display)
+                face_image = ContentFile(image_data, name=f'{username}_face.jpg')
+                UserImages.objects.create(user=user, face_image=face_image)
+
+                # Save embedding to disk
                 project_root = settings.BASE_DIR
                 save_dir = os.path.join(project_root, "data", "users", username)
                 os.makedirs(save_dir, exist_ok=True)
                 np.save(os.path.join(save_dir, "embeddings.npy"), emb)
-            # --- NEW REGISTRATION LOGIC END ---
 
             return JsonResponse({'status': 'success', 'message': f'Teacher {name} registered successfully!'})
         except KeyError as e:
@@ -198,7 +213,7 @@ def add_teacher(request):
 
     return render(request, 'add_teacher.html')
 
-@login_required
+@principal_required
 def delete_teacher(request, teacher_id):
     if request.method == 'POST':
         try:
@@ -305,10 +320,10 @@ def teacher_dashboard(request):
             'active_session': active_session
         })
     except Exception as e:
-        print(e)
+        logger.error("Teacher dashboard error: %s", e)
         return redirect('home')
 
-@login_required
+@principal_required
 def schedule_teacher(request, teacher_id):
     try:
         # Ensure the teacher belongs to the logged-in principal
@@ -334,7 +349,7 @@ def schedule_teacher(request, teacher_id):
     except Teacher.DoesNotExist:
         return redirect('principal_dashboard')
 
-@login_required
+@principal_required
 def delete_schedule(request, timetable_id):
     if request.method == 'POST':
         try:
@@ -349,7 +364,7 @@ def delete_schedule(request, timetable_id):
             pass
     return redirect('principal_dashboard')
 
-@login_required
+@principal_required
 def delete_all_schedule(request, teacher_id):
     if request.method == 'POST':
         try:
@@ -455,7 +470,7 @@ def teacher_profile(request):
 
         return render(request, 'teacher_profile.html', context)
     except Exception as e:
-        print(e)
+        logger.error("Teacher profile error: %s", e)
         return redirect('home')
 
 @login_required
@@ -597,7 +612,7 @@ def end_class(request):
         
         return redirect('teacher_dashboard')
     except Exception as e:
-        print(e)
+        logger.error("End class error: %s", e)
         return redirect('teacher_dashboard')
 
 @login_required
@@ -653,7 +668,7 @@ def update_live_attendance(request):
                 stored_emb = np.load(embedding_path)
             else:
                 # Fallback: Try to create embedding from existing UserImages
-                print(f"Embedding not found for {request.user.username}, attempting to generate from stored image.")
+                logger.info("Embedding not found for %s, attempting to generate from stored image.", request.user.username)
                 
                 # Ensure directory exists first!
                 os.makedirs(user_dir, exist_ok=True)
@@ -674,11 +689,11 @@ def update_live_attendance(request):
                             stored_emb = encodings[0]
                             # Save it for future use!
                             np.save(embedding_path, stored_emb)
-                            print(f"Generated and saved new embedding for {request.user.username}")
+                            logger.info("Generated and saved new embedding for %s", request.user.username)
                         else:
-                            print("No face found in stored UserImage")
+                            logger.warning("No face found in stored UserImage")
                     except Exception as e:
-                        print(f"Error generating fallback embedding: {e}")
+                        logger.error("Error generating fallback embedding: %s", e)
                 
             if stored_emb is None:
                  return JsonResponse({'status': 'error', 'message': 'Registration data missing. Please re-register.'})
@@ -704,12 +719,12 @@ def update_live_attendance(request):
                 return JsonResponse({'status': 'warning', 'message': 'Unknown face detected'})
 
         except Exception as e:
-            print(f"Update error: {e}")
+            logger.error("Live attendance update error: %s", e)
             return JsonResponse({'status': 'error', 'message': str(e)})
             
     return JsonResponse({'status': 'error', 'message': 'Invalid method'})
 
-@login_required
+@principal_required
 def view_teacher_reports(request, teacher_id):
     try:
         from django.utils import timezone
@@ -778,12 +793,10 @@ def view_teacher_reports(request, teacher_id):
         
         return render(request, 'teacher_reports.html', context)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Error viewing reports: {e}")
+        logger.error("Error viewing reports: %s", e, exc_info=True)
         return redirect('principal_dashboard')
 
-@login_required
+@principal_required
 def principal_analysis(request):
     try:
         from django.utils import timezone
@@ -1009,13 +1022,11 @@ def principal_analysis(request):
         }
         return render(request, 'principal_analysis.html', context)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error("Analysis error: %s", e, exc_info=True)
         messages.error(request, f"Error loading analysis: {str(e)}")
-        print(f"Analysis error: {e}")
         return redirect('principal_dashboard')
 
-@login_required
+@principal_required
 def export_defaulter_csv(request):
     import csv
     from django.http import HttpResponse
@@ -1224,7 +1235,7 @@ def teacher_help(request):
     except (Teacher.DoesNotExist, AttributeError):
         return redirect('home')
 
-@login_required
+@principal_required
 def teacher_analysis(request, teacher_id):
     """Comprehensive per-teacher analysis with Risk Gauge, Heatmap, and more."""
     try:
@@ -1610,7 +1621,6 @@ def teacher_analysis(request, teacher_id):
         return render(request, 'teacher_analysis.html', context)
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error("Teacher analysis error: %s", e, exc_info=True)
         messages.error(request, f"Error loading teacher analysis: {str(e)}")
         return redirect('principal_dashboard')

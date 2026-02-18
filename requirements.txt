@@ -16,3 +16,9 @@ sqlparse==0.5.5
 
 # Environment Configuration
 python-decouple==3.8
+
+# Production Server
+gunicorn==23.0.0
+
+# Static File Serving (production)
+whitenoise==6.9.0

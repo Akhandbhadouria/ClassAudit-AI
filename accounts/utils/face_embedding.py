@@ -1,6 +1,10 @@
 import face_recognition
 import numpy as np
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def get_embedding(frame, face_location=None):
     """
     Returns face embedding for the detected face in frame.
@@ -39,7 +43,7 @@ def get_embedding(frame, face_location=None):
         return encodings[0]
     
     except Exception as e:
-        print(f"Error getting face embedding: {e}")
+        logger.error("Error getting face embedding: %s", e)
         return None
 
 
