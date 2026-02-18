@@ -1,6 +1,126 @@
+<style>
+    :root {
+        --sidebar-width: 280px;
+    }
+
+    .sidebar {
+        width: var(--sidebar-width);
+        background: #fcedd6 !important;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        border-right: 1px solid rgba(0, 0, 0, 0.05) !important;
+        padding: 2rem 1.5rem !important;
+        height: 100vh;
+        position: fixed;
+        left: 0;
+        top: 0;
+        display: flex;
+        flex-direction: column;
+        z-index: 1000;
+        transition: all 0.3s ease;
+    }
+
+    .sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0.5rem 0.75rem 2.5rem 0.75rem;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 800;
+        font-size: 1.4rem;
+        color: #1F2937;
+        letter-spacing: -0.5px;
+    }
+
+    .sidebar-brand i {
+        background: linear-gradient(135deg, #1F2937 0%, #4B5563 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 1.6rem;
+    }
+
+    .menu-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #9CA3AF;
+        letter-spacing: 1.2px;
+        padding: 0 0.75rem 0.75rem 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0.85rem 1rem;
+        margin-bottom: 0.5rem;
+        border-radius: 16px !important;
+        text-decoration: none;
+        color: #6B7280 !important;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid transparent;
+    }
+
+    .nav-item i {
+        font-size: 1.1rem;
+        width: 24px;
+        text-align: center;
+        transition: transform 0.25s ease;
+    }
+
+    .nav-item:hover {
+        background: rgba(31, 41, 55, 0.04) !important;
+        color: #1F2937 !important;
+        transform: translateX(4px);
+    }
+
+    .nav-item:hover i {
+        transform: scale(1.1);
+    }
+
+    .nav-item.active {
+        background: #1F2937 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 10px 15px -3px rgba(31, 41, 55, 0.2);
+    }
+
+    .nav-item.active i {
+        color: #FFFFFF !important;
+    }
+
+    .logout-item {
+        margin-top: auto;
+        border-top: 1px solid rgba(0, 0, 0, 0.05);
+        padding-top: 1.5rem;
+    }
+
+    .logout-link {
+        color: #EF4444 !important;
+    }
+
+    .logout-link:hover {
+        background: #FEF2F2 !important;
+        color: #DC2626 !important;
+    }
+
+    /* Custom Scrollbar for Sidebar */
+    .sidebar::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .sidebar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+    }
+</style>
+
 <div class="sidebar">
     <div class="sidebar-brand">
-        <i class="fas fa-layer-group"></i>
+        <i class=""></i>
         <span>Principal Portal</span>
     </div>
 
@@ -13,7 +133,7 @@
     <a href="{% url 'principal_analysis' %}"
         class="nav-item {% if request.resolver_match.url_name == 'principal_analysis' %}active{% endif %}">
         <i class="fas fa-chart-pie"></i>
-        <span>Performance Analysis</span>
+        <span>Analysis</span>
     </a>
     <a href="{% url 'add_teacher' %}"
         class="nav-item {% if request.resolver_match.url_name == 'add_teacher' %}active{% endif %}">
@@ -21,9 +141,11 @@
         <span>Add Teacher</span>
     </a>
 
-    <div class="menu-label" style="margin-top: auto;">Account</div>
-    <a href="{% url 'logout' %}" class="nav-item" style="color: #dc2626;">
-        <i class="fas fa-sign-out-alt"></i>
-        <span>Logout</span>
-    </a>
+    <div class="logout-item">
+        <div class="menu-label">Account</div>
+        <a href="{% url 'logout' %}" class="nav-item logout-link">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+        </a>
+    </div>
 </div>

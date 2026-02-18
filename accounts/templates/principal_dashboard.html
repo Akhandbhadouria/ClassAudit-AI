@@ -28,13 +28,6 @@
             <a href="#facultyList" style="text-decoration: none; ">
                 <div class="nav-tab">Faculty</div>
             </a>
-            <a href="{% url 'add_teacher' %}" style="text-decoration: none; ">
-                <div class="nav-tab">Add Teacher</div>
-            </a>
-            <a href="{% url 'principal_analysis' %}" style="text-decoration: none; ">
-                <div class="nav-tab">Reports</div>
-            </a>
-
         </div>
 
         <div class="page-header">
@@ -218,7 +211,7 @@
                 <!-- User Profile -->
                 <div class="content-card profile-widget">
                     <div style="display: flex; justify-content: flex-end; margin-bottom: -20px;">
-                        <button class="action-circle-btn"><i class="fas fa-pen"></i></button>
+                        <button class="action-circle-btn"></i></button>
                     </div>
 
                     <img src="https://ui-avatars.com/api/?name={{ user.username }}&background=FFE5D9&color=1F2937&size=128"

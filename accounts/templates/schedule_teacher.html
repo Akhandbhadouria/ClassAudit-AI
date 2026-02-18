@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
         rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'css/admin_theme.css' %}">
     <link rel="stylesheet" href="{% static 'css/schedule_teacher.css' %}">
 </head>
@@ -19,7 +19,7 @@
     {% include 'sidebar_principal.html' %}
 
     <!-- Main Content -->
-    <div class="main-content">
+    <div class="main-content" style="margin-left: 280px; max-width: calc(100% - 280px);">
         <!-- Top Navigation -->
         <div class="top-nav">
             <a href="{% url 'principal_dashboard' %}" style="text-decoration: none;">
@@ -42,11 +42,11 @@
                     style="color: var(--text-light); text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.9rem;">
                     <i class="fas fa-arrow-left"></i> Back to Dashboard
                 </a>
-                <h1>Manage Schedule</h1>
-                <p style="color: var(--text-light);">Define class timings for <strong>{{ teacher.name }}</strong></p>
+                <h1> Manage Schedule</h1>
+
             </div>
         </div>
-
+<br>
         {% if messages %}
         <div style="margin-bottom: 2rem;">
             {% for message in messages %}

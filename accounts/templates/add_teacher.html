@@ -18,20 +18,11 @@
     {% include 'sidebar_principal.html' %}
 
     <!-- Main Content -->
-    <div class="main-content">
+    <div class="main-content" style="margin-left: 280px; max-width: calc(100% - 280px);">
         <!-- Top Navigation -->
         <div class="top-nav">
             <a href="{% url 'principal_dashboard' %}" style="text-decoration: none;">
                 <div class="nav-tab">Overview</div>
-            </a>
-            <a href="{% url 'principal_dashboard' %}#facultyList" style="text-decoration: none;">
-                <div class="nav-tab">Faculty</div>
-            </a>
-            <a href="{% url 'add_teacher' %}" style="text-decoration: none;">
-                <div class="nav-tab active">Add Teacher</div>
-            </a>
-            <a href="{% url 'principal_analysis' %}" style="text-decoration: none;">
-                <div class="nav-tab">Reports</div>
             </a>
         </div>
 
@@ -39,7 +30,7 @@
             <div>
                 <h1>Register New Faculty</h1>
             </div>
-<br>
+            <br>
             <a href="{% url 'principal_dashboard' %}" class="btn-pill"
                 style="background: white; border: 1px solid #eee;">
                 <i class="fas fa-arrow-left"></i> Back

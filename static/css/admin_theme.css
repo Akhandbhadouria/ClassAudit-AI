@@ -21,6 +21,17 @@ body {
     background-color: var(--bg-color);
     color: var(--text-dark);
     font-family: 'Plus Jakarta Sans', sans-serif;
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Layout: prevent sidebar overlap on all principal pages */
+.main-content {
+    margin-left: 280px !important;
+    flex: 1;
+    padding: 2rem 2.5rem;
+    max-width: calc(100% - 280px) !important;
+    width: calc(100% - 280px) !important;
 }
 
 /* Sidebar Overrides */
