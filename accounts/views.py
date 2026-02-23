@@ -55,9 +55,28 @@ def logout_view(request):
 
 def principal_register(request):
     if request.method == 'POST':
-        username = request.POST['username']
-        password = request.POST['password']
-        school_name = request.POST['school_name']
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        school_name = request.POST.get('school_name', '').strip()
+
+        # ── Input Validation ──
+        if not username or not password or not school_name:
+            return JsonResponse({'status': 'error', 'message': 'All fields are required.'})
+
+        if len(username) < 3:
+            return JsonResponse({'status': 'error', 'message': 'Username must be at least 3 characters long.'})
+
+        if not username.isalnum():
+            return JsonResponse({'status': 'error', 'message': 'Username can only contain letters and numbers.'})
+
+        if len(password) < 8:
+            return JsonResponse({'status': 'error', 'message': 'Password must be at least 8 characters long.'})
+
+        if password.isdigit() or password.isalpha():
+            return JsonResponse({'status': 'error', 'message': 'Password must contain both letters and numbers.'})
+
+        if len(school_name) < 2:
+            return JsonResponse({'status': 'error', 'message': 'Please enter a valid school name.'})
 
         if User.objects.filter(username=username).exists():
             return JsonResponse({'status': 'error', 'message': 'Username already exists.'})
@@ -220,19 +239,15 @@ def delete_teacher(request, teacher_id):
             # Get the teacher and verify it belongs to this principal
             teacher = Teacher.objects.get(id=teacher_id, principal=request.user.principal)
             
-            # Get the associated user
-            user = teacher.user
-            
-            # Delete the teacher (this will cascade to timetables and attendance records)
+            # Delete the teacher — the post_delete signal (delete_teacher_user_and_data)
+            # automatically handles deleting the associated User and face data from disk.
             teacher.delete()
-            
-            # Delete the associated user and their face images
-            user.delete()
             
             return JsonResponse({'status': 'success', 'message': 'Teacher deleted successfully!'})
         except Teacher.DoesNotExist:
             return JsonResponse({'status': 'error', 'message': 'Teacher not found or unauthorized.'})
         except Exception as e:
+            logger.error("Error deleting teacher %s: %s", teacher_id, e, exc_info=True)
             return JsonResponse({'status': 'error', 'message': str(e)})
     
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'})
