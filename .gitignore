@@ -16,6 +16,7 @@ env/
 # ── Database ──
 db.sqlite3
 db.sqlite3-journal
+mydatabase
 
 # ── Face Embedding Data (SENSITIVE) ──
 data/users/
