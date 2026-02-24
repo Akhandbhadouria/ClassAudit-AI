@@ -10,10 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
-import os
 from pathlib import Path
 from decouple import config, Csv
-import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,11 +27,6 @@ SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
-
-# Render sets this automatically for your .onrender.com domain
-RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
-if RENDER_EXTERNAL_HOSTNAME:
-    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 # Application definition
@@ -83,12 +76,11 @@ WSGI_APPLICATION = 'facere.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-# Use DATABASE_URL from Render (PostgreSQL); fallback to SQLite for local dev
 DATABASES = {
-    "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'mydatabase'}",
-        conn_max_age=600,
-    )
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": "mydatabase",
+    }
 }
 
 # Password validation
@@ -145,22 +137,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/'
 
 # ── Logging ──
-_log_handlers = ['console']
-_log_handlers_config = {
-    'console': {
-        'class': 'logging.StreamHandler',
-        'formatter': 'verbose',
-    },
-}
-# Only log to file in development (Render's filesystem is ephemeral)
-if DEBUG:
-    _log_handlers.append('file')
-    _log_handlers_config['file'] = {
-        'class': 'logging.FileHandler',
-        'filename': BASE_DIR / 'app.log',
-        'formatter': 'verbose',
-    }
-
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -170,10 +146,20 @@ LOGGING = {
             'style': '{',
         },
     },
-    'handlers': _log_handlers_config,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'app.log',
+            'formatter': 'verbose',
+        },
+    },
     'loggers': {
         'accounts': {
-            'handlers': _log_handlers,
+            'handlers': ['console', 'file'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
