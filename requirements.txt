@@ -28,4 +28,3 @@ whitenoise==6.6.0
 
 # PostgreSQL Database Adapter
 psycopg2-binary==2.9.9
-dj-database-url==2.1.0
