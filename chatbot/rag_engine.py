@@ -1,10 +1,3 @@
-"""
-RAG Engine for ClassAudit AI Chatbot.
-- Per-principal ChromaDB collections (each school has its own knowledge base).
-- Supports PDF, Markdown, and TXT files.
-- Uses sentence-transformers for embeddings and Groq (LLaMA 3.3 70B) for generation.
-"""
-
 import os
 import re
 import chromadb
@@ -45,7 +38,6 @@ def _get_groq_client() -> Groq:
 
 
 def _get_collection(principal_id: int) -> chromadb.Collection:
-    """Get or create a ChromaDB collection for a specific principal."""
     client = _get_chroma_client()
     collection_name = f"principal_{principal_id}"
     return client.get_or_create_collection(
@@ -131,10 +123,7 @@ def ingest_file_for_principal(
     title: str,
     doc_id: str,
 ) -> int:
-    """
-    Extract, chunk, embed, and store a single document into the principal's collection.
-    Returns the number of chunks ingested.
-    """
+    
     embed_model = _get_embedding_model()
     collection = _get_collection(principal_id)
     filename = os.path.basename(file_path)
@@ -243,7 +232,7 @@ def generate_answer(query: str, context_chunks: list[dict]) -> str:
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},

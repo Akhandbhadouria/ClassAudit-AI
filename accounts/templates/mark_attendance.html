@@ -99,51 +99,72 @@
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            const imageData = canvas.toDataURL('image/jpeg');
 
             captureBtn.disabled = true;
-            captureBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
-            statusMessage.style.display = 'none';
+            captureBtn.innerHTML = '<i class="fas fa-eye"></i> Looking for blink... Keep looking at camera';
+            statusMessage.style.display = 'block';
+            statusMessage.style.background = '#e0f2fe';
+            statusMessage.style.color = '#0369a1';
+            statusMessage.innerHTML = '<i class="fas fa-info-circle"></i> Liveness check: Please <b>blink naturally</b> to verify your presence.';
 
-            fetch('{% url "mark_attendance" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: `face_image=${encodeURIComponent(imageData)}`
-            })
-                .then(response => response.json())
-                .then(data => {
-                    statusMessage.style.display = 'block';
+            // Capture burst of 8 frames over 2.0 seconds for natural blink & 3D liveness detection
+            const capturedFrames = [];
+            const burstInterval = 250; // ms
+            const totalBurstFrames = 8;
+            let counter = 0;
 
-                    if (data.status === 'success') {
-                        statusMessage.style.background = '#dcfce7';
-                        statusMessage.style.color = '#15803d';
-                        statusMessage.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
-                        captureBtn.innerHTML = '<i class="fas fa-check"></i> Success';
+            const burstTimer = setInterval(() => {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                capturedFrames.push(canvas.toDataURL('image/jpeg', 0.85));
+                counter++;
 
-                        setTimeout(() => {
-                            window.location.href = "{% url 'teacher_dashboard' %}";
-                        }, 2000);
-                    } else {
-                        statusMessage.style.background = '#fee2e2';
-                        statusMessage.style.color = '#b91c1c';
-                        statusMessage.innerHTML = '<i class="fas fa-times-circle"></i> ' + data.message;
-                        captureBtn.disabled = false;
-                        captureBtn.innerHTML = '<i class="fas fa-redo"></i> Try Again';
-                    }
-                })
-                .catch(error => {
-                    captureBtn.disabled = false;
-                    captureBtn.innerHTML = '<i class="fas fa-camera"></i> Scan Face & Mark Present';
-                    statusMessage.style.display = 'block';
-                    statusMessage.style.background = '#fee2e2';
-                    statusMessage.style.color = '#b91c1c';
-                    statusMessage.innerText = 'An error occurred. Please try again.';
-                });
+                if (counter >= totalBurstFrames) {
+                    clearInterval(burstTimer);
+                    captureBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying presence & face...';
+
+                    const primaryImage = capturedFrames[0];
+                    const formData = new FormData();
+                    formData.append('face_image', primaryImage);
+                    formData.append('face_frames', JSON.stringify(capturedFrames));
+
+                    fetch('{% url "mark_attendance" %}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: formData
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            statusMessage.style.display = 'block';
+
+                            if (data.status === 'success') {
+                                statusMessage.style.background = '#dcfce7';
+                                statusMessage.style.color = '#15803d';
+                                statusMessage.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
+                                captureBtn.innerHTML = '<i class="fas fa-check"></i> Success';
+
+                                setTimeout(() => {
+                                    window.location.href = "{% url 'teacher_dashboard' %}";
+                                }, 2000);
+                            } else {
+                                statusMessage.style.background = '#fee2e2';
+                                statusMessage.style.color = '#b91c1c';
+                                statusMessage.innerHTML = '<i class="fas fa-times-circle"></i> ' + data.message;
+                                captureBtn.disabled = false;
+                                captureBtn.innerHTML = '<i class="fas fa-redo"></i> Try Again';
+                            }
+                        })
+                        .catch(error => {
+                            captureBtn.disabled = false;
+                            captureBtn.innerHTML = '<i class="fas fa-camera"></i> Scan Face & Mark Present';
+                            statusMessage.style.display = 'block';
+                            statusMessage.style.background = '#fee2e2';
+                            statusMessage.style.color = '#b91c1c';
+                            statusMessage.innerText = 'An error occurred. Please try again.';
+                        });
+                }
+            }, burstInterval);
         });
     </script>
 </body>

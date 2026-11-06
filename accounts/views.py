@@ -1,5 +1,4 @@
 import logging
-import face_recognition
 import base64
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
@@ -13,6 +12,8 @@ import numpy as np
 import cv2 
 from .utils.face_embedding import get_embedding 
 from .utils.face_matcher import match_face
+from .utils.liveness_detector import check_liveness_challenge, check_single_frame_liveness
+import json
 from django.conf import settings 
 from django.contrib.auth import authenticate, login, logout as auth_logout 
 from django.contrib.auth.decorators import login_required 
@@ -205,6 +206,15 @@ def add_teacher(request):
             # Convert base64 to OpenCV image and extract embedding
             nparr = np.frombuffer(image_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            # Liveness check on registration photo (ensures valid face structure and open eyes)
+            is_valid_face, liveness_msg = check_single_frame_liveness(frame)
+            if not is_valid_face:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Face registration failed: {liveness_msg}. Please look straight at the camera with eyes open in good lighting.'
+                })
+
             emb = get_embedding(frame)
 
             # If embedding fails, abort BEFORE creating any database records
@@ -264,8 +274,9 @@ def delete_teacher(request, teacher_id):
 
 def login_user(request):
     if request.method == 'POST':
-        username = request.POST['username']
-        face_image_data = request.POST['face_image']
+        username = request.POST.get('username', '').strip()
+        face_image_data = request.POST.get('face_image')
+        face_frames_data = request.POST.get('face_frames')
 
         try:
             user = User.objects.get(username=username)
@@ -273,41 +284,89 @@ def login_user(request):
             return JsonResponse({'status': 'error', 'message': 'User not found.'})
 
         if not hasattr(user, 'teacher'):
-             return JsonResponse({'status': 'error', 'message': 'This is not a teacher account.'})
-
-        face_image_data = face_image_data.split(",")[1]
-        uploaded_image = ContentFile(base64.b64decode(face_image_data), name=f'{username}_temp.jpg')
+            return JsonResponse({'status': 'error', 'message': 'This is not a teacher account.'})
 
         try:
-            uploaded_face_image = face_recognition.load_image_file(uploaded_image)
-            uploaded_face_encodings = face_recognition.face_encodings(uploaded_face_image)
+            # 1. Liveness check if multiple frames provided
+            verified_frame = None
+            if face_frames_data:
+                try:
+                    frames_list = json.loads(face_frames_data)
+                    decoded_frames = []
+                    for f_str in frames_list:
+                        if ',' in f_str:
+                            f_str = f_str.split(',', 1)[1]
+                        arr = np.frombuffer(base64.b64decode(f_str), np.uint8)
+                        frame_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                        if frame_cv is not None:
+                            decoded_frames.append(frame_cv)
 
-            if len(uploaded_face_encodings) > 0:
-                uploaded_face_encoding = uploaded_face_encodings[0]
-                user_image = UserImages.objects.filter(user=user).first()
-                if user_image:
-                    stored_face_image = face_recognition.load_image_file(user_image.face_image.path)
-                    stored_face_encodings = face_recognition.face_encodings(stored_face_image)
-                    
-                    if len(stored_face_encodings) > 0:
-                        stored_face_encoding = stored_face_encodings[0]
-                        match = face_recognition.compare_faces([stored_face_encoding], uploaded_face_encoding)
-                        if match[0]:
-                            login(request, user) # Optional: creates session
-                            return JsonResponse({'status': 'success', 'message': 'Login successful!', 'redirect': '/teacher/dashboard/'}) # Redirect to a teacher dashboard?
-                        else:
-                            return JsonResponse({'status': 'error', 'message': 'Face recognition failed.'})
-                    else:
-                        return JsonResponse({'status': 'error', 'message': 'No face found in stored image.'})
-                else:
-                    return JsonResponse({'status': 'error', 'message': 'No registered face found.'})
+                    if decoded_frames:
+                        is_live, liveness_msg, best_frame = check_liveness_challenge(decoded_frames, expected_challenge='blink')
+                        if not is_live:
+                            return JsonResponse({
+                                'status': 'error',
+                                'message': f'Liveness verification failed: {liveness_msg}'
+                            })
+                        verified_frame = best_frame
+                except Exception as ex:
+                    logger.warning("Error processing login liveness frames: %s", ex)
+
+            # 2. Extract embedding from verified frame or single image
+            if verified_frame is not None:
+                live_emb = get_embedding(verified_frame)
+            elif face_image_data:
+                if ',' in face_image_data:
+                    face_image_data = face_image_data.split(',', 1)[1]
+                arr = np.frombuffer(base64.b64decode(face_image_data), np.uint8)
+                single_frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+                is_valid, live_msg = check_single_frame_liveness(single_frame)
+                if not is_valid:
+                    return JsonResponse({'status': 'error', 'message': f'Liveness check failed: {live_msg}'})
+
+                live_emb = get_embedding(single_frame)
             else:
-                 return JsonResponse({'status': 'error', 'message': 'No face detected in uploaded image.'})
+                return JsonResponse({'status': 'error', 'message': 'No face data received.'})
+
+            if live_emb is None:
+                return JsonResponse({'status': 'error', 'message': 'No face detected in live scan.'})
+
+            # 3. Load stored embedding (.npy) or fallback to UserImages
+            project_root = settings.BASE_DIR
+            embedding_path = os.path.join(project_root, "data", "users", username, "embeddings.npy")
+            stored_emb = None
+
+            if os.path.exists(embedding_path):
+                stored_emb = np.load(embedding_path)
+            else:
+                user_image = UserImages.objects.filter(user=user).first()
+                if user_image and user_image.face_image:
+                    image_path = user_image.face_image.path
+                    stored_bgr = cv2.imread(image_path)
+                    if stored_bgr is not None:
+                        stored_emb = get_embedding(stored_bgr)
+                        if stored_emb is not None:
+                            np.save(embedding_path, stored_emb)
+
+            if stored_emb is None:
+                return JsonResponse({'status': 'error', 'message': 'Face registration data not found.'})
+
+            # 4. Compare embeddings
+            if match_face(stored_emb, live_emb):
+                login(request, user)
+                return JsonResponse({
+                    'status': 'success',
+                    'message': 'Login successful!',
+                    'redirect': '/teacher/dashboard/'
+                })
+            else:
+                return JsonResponse({'status': 'error', 'message': 'Face recognition failed. Verification mismatch.'})
+
         except Exception as e:
-            return JsonResponse({'status': 'error', 'message': f'Error processing image: {str(e)}'})
-            
-        return JsonResponse({'status': 'error', 'message': 'Face recognition failed.'})
-   
+            logger.error("Error in login_user: %s", e, exc_info=True)
+            return JsonResponse({'status': 'error', 'message': f'Error processing face: {str(e)}'})
+
     return render(request, 'login.html')
 
 @login_required
@@ -525,7 +584,8 @@ def previous_records_teacher(request):
 def mark_attendance(request):
     if request.method == 'POST':
         try:
-            face_image_data = request.POST['face_image']
+            face_image_data = request.POST.get('face_image')
+            face_frames_data = request.POST.get('face_frames')
             user = request.user
             
             if not hasattr(user, 'teacher'):
@@ -539,14 +599,47 @@ def mark_attendance(request):
             if TeacherAttendance.objects.filter(teacher=teacher, date=today).exists():
                  return JsonResponse({'status': 'error', 'message': 'Attendance already marked for today.'})
 
-            # Verify Face
-            face_data_str = face_image_data.split(",")[1]
-            image_data = base64.b64decode(face_data_str)
-            
-            nparr = np.frombuffer(image_data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            live_emb = get_embedding(frame)
+            # Liveness Verification
+            verified_frame = None
+            if face_frames_data:
+                try:
+                    frames_list = json.loads(face_frames_data)
+                    decoded_frames = []
+                    for f_str in frames_list:
+                        if ',' in f_str:
+                            f_str = f_str.split(',', 1)[1]
+                        arr = np.frombuffer(base64.b64decode(f_str), np.uint8)
+                        frame_cv = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                        if frame_cv is not None:
+                            decoded_frames.append(frame_cv)
+
+                    if decoded_frames:
+                        is_live, liveness_msg, best_frame = check_liveness_challenge(decoded_frames, expected_challenge='blink')
+                        if not is_live:
+                            return JsonResponse({
+                                'status': 'error',
+                                'message': f'Liveness verification failed: {liveness_msg}'
+                            })
+                        verified_frame = best_frame
+                except Exception as ex:
+                    logger.warning("Error processing attendance liveness frames: %s", ex)
+
+            # Extract embedding from verified frame or single image
+            if verified_frame is not None:
+                live_emb = get_embedding(verified_frame)
+            elif face_image_data:
+                face_data_str = face_image_data.split(",")[1] if "," in face_image_data else face_image_data
+                image_data = base64.b64decode(face_data_str)
+                nparr = np.frombuffer(image_data, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                is_valid, live_msg = check_single_frame_liveness(frame)
+                if not is_valid:
+                    return JsonResponse({'status': 'error', 'message': f'Liveness verification failed: {live_msg}'})
+
+                live_emb = get_embedding(frame)
+            else:
+                return JsonResponse({'status': 'error', 'message': 'No face scan received.'})
             
             if live_emb is None:
                  return JsonResponse({'status': 'error', 'message': 'No face detected in the image.'})
@@ -679,13 +772,18 @@ def update_live_attendance(request):
             if not session:
                  return JsonResponse({'status': 'error', 'message': 'No ongoing session.'})
 
-            # Verify Face
+            # Verify Face & Liveness
             face_data_str = face_image_data.split(",")[1]
             image_data = base64.b64decode(face_data_str)
             
             nparr = np.frombuffer(image_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
+
+            # Continuous liveness check (prevents static photo / phone screen spoofing during lecture)
+            is_live_frame, live_detail = check_single_frame_liveness(frame)
+            if not is_live_frame:
+                return JsonResponse({'status': 'warning', 'message': f'Active presence check: {live_detail}'})
+
             live_emb = get_embedding(frame)
             
             if live_emb is None:
@@ -710,22 +808,15 @@ def update_live_attendance(request):
                 user_image = UserImages.objects.filter(user=request.user).first()
                 if user_image and user_image.face_image:
                     try:
-                        # Load image using face_recognition (as in old logic) or cv2
-                        # Let's use face_recognition since we have the file path
                         image_path = user_image.face_image.path
-                        # Check module import inside fallback
-                        import face_recognition
-                        
-                        image = face_recognition.load_image_file(image_path)
-                        encodings = face_recognition.face_encodings(image)
-                        
-                        if len(encodings) > 0:
-                            stored_emb = encodings[0]
-                            # Save it for future use!
-                            np.save(embedding_path, stored_emb)
-                            logger.info("Generated and saved new embedding for %s", request.user.username)
+                        stored_bgr = cv2.imread(image_path)
+                        if stored_bgr is not None:
+                            stored_emb = get_embedding(stored_bgr)
+                            if stored_emb is not None:
+                                np.save(embedding_path, stored_emb)
+                                logger.info("Generated and saved new ONNX embedding for %s", request.user.username)
                         else:
-                            logger.warning("No face found in stored UserImage")
+                            logger.warning("Could not read stored UserImage from %s", image_path)
                     except Exception as e:
                         logger.error("Error generating fallback embedding: %s", e)
                 

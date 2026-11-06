@@ -76,15 +76,34 @@
             .then(stream => video.srcObject = stream)
             .catch(err => showStatus('Camera access denied.', 'error'));
 
+        let capturedFrames = [];
+
         captureBtn.addEventListener('click', () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            capturedImage = canvas.toDataURL('image/jpeg');
+            const context = canvas.getContext('2d');
 
-            showStatus('Face captured!', 'success');
-            submitBtn.disabled = false;
-            captureBtn.innerHTML = '<i class="fas fa-redo"></i> Retake';
+            captureBtn.disabled = true;
+            captureBtn.innerHTML = '<i class="fas fa-eye"></i> Looking for blink...';
+            showStatus('Liveness check: Please <b>blink your eyes naturally</b> within 2 seconds...', 'success');
+
+            capturedFrames = [];
+            let counter = 0;
+            const totalBurst = 8;
+            const interval = setInterval(() => {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                capturedFrames.push(canvas.toDataURL('image/jpeg', 0.85));
+                counter++;
+
+                if (counter >= totalBurst) {
+                    clearInterval(interval);
+                    capturedImage = capturedFrames[0];
+                    captureBtn.disabled = false;
+                    captureBtn.innerHTML = '<i class="fas fa-redo"></i> Retake';
+                    submitBtn.disabled = false;
+                    showStatus('Live frames captured! Click Sign In to verify.', 'success');
+                }
+            }, 250);
         });
 
         function showStatus(msg, type) {
@@ -100,10 +119,13 @@
             const formData = new FormData();
             formData.append('username', document.getElementById('username').value);
             formData.append('face_image', capturedImage);
+            if (capturedFrames.length > 0) {
+                formData.append('face_frames', JSON.stringify(capturedFrames));
+            }
             formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
 
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying presence & identity...';
 
             fetch('/login/', { method: 'POST', body: formData })
                 .then(r => r.json())

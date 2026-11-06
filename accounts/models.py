@@ -90,7 +90,6 @@ class ClassSession(models.Model):
 
 
 class PrincipalDocument(models.Model):
-    """Stores policy/handbook documents uploaded by a Principal for their RAG chatbot."""
     principal = models.ForeignKey(Principal, on_delete=models.CASCADE, related_name='documents')
     title = models.CharField(max_length=200)
     file = models.FileField(upload_to='principal_docs/')
@@ -108,7 +107,6 @@ class PrincipalDocument(models.Model):
 # ── Signal: Remove ChromaDB chunks when a document is deleted ──
 @receiver(post_delete, sender=PrincipalDocument)
 def remove_document_from_vector_store(sender, instance, **kwargs):
-    """When a PrincipalDocument is deleted, remove its chunks from ChromaDB."""
     try:
         import chromadb
         from django.conf import settings as app_settings
@@ -128,7 +126,6 @@ def remove_document_from_vector_store(sender, instance, **kwargs):
 # ── Signal: Auto-delete User and face data when Teacher is deleted ──
 @receiver(post_delete, sender=Teacher)
 def delete_teacher_user_and_data(sender, instance, **kwargs):
-    """When a Teacher is deleted, also remove the linked User and their face embeddings."""
     user = instance.user
     username = user.username
 

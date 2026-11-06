@@ -17,6 +17,9 @@ env/
 db.sqlite3
 db.sqlite3-journal
 
+# ── Models (Heavy ONNX binaries) ──
+models/*.onnx
+
 # ── Face Embedding Data (SENSITIVE) ──
 data/users/
 
@@ -48,3 +51,11 @@ defaulter_report.csv
 
 # ── Live attendance mini (sub-project venv) ──
 live-attendance-mini/venv/
+
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.log
+.DS_Store

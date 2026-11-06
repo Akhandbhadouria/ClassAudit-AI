@@ -11,7 +11,6 @@ from . import rag_engine
 
 # ── Helper: resolve principal_id for any logged-in user ──
 def _get_principal_id(request) -> int | None:
-    """Returns the principal ID that owns this user's knowledge base."""
     user = request.user
     if hasattr(user, 'principal'):
         return user.principal.id
@@ -23,7 +22,6 @@ def _get_principal_id(request) -> int | None:
 # ── Chat Page ──
 @login_required
 def chatbot_page(request):
-    """Render the chatbot chat page."""
     user = request.user
     is_principal = hasattr(user, 'principal')
     is_teacher = hasattr(user, 'teacher')
@@ -31,7 +29,6 @@ def chatbot_page(request):
 
     doc_count = rag_engine.get_document_count(principal_id) if principal_id else 0
 
-    # Get uploaded documents for sidebar (principal only)
     uploaded_docs = []
     if is_principal:
         uploaded_docs = PrincipalDocument.objects.filter(
@@ -48,7 +45,6 @@ def chatbot_page(request):
     return render(request, 'chatbot/chat.html', context)
 
 
-# ── Chat API ──
 @login_required
 @require_http_methods(["POST"])
 def chat_api(request):
@@ -168,7 +164,6 @@ def upload_documents(request):
 @login_required
 @require_http_methods(["POST"])
 def delete_document(request, doc_id):
-    """Delete a document from DB and remove its chunks from ChromaDB."""
     if not hasattr(request.user, 'principal'):
         return JsonResponse({"error": "Only principals can delete documents."}, status=403)
 
@@ -177,14 +172,12 @@ def delete_document(request, doc_id):
     principal_id = request.user.principal.id
     title = doc.title
 
-    # Delete file from disk
     try:
         if doc.file and os.path.exists(doc.file.path):
             os.remove(doc.file.path)
     except Exception:
         pass
 
-    # Delete DB record (signal fires to remove ChromaDB chunks too)
     doc.delete()
 
     return JsonResponse({

@@ -101,25 +101,48 @@
             sessionTimer.innerText = `${h}:${m}:${s}`;
         }, 1000);
 
+        // Client-Side Face Presence Pre-check using Browser Shape Detection API
+        let browserFaceDetector = null;
+        if ('FaceDetector' in window) {
+            try {
+                browserFaceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+            } catch (e) {
+                browserFaceDetector = null;
+            }
+        }
+
         function startTracking() {
             setInterval(() => {
                 captureAndVerify();
             }, 5000); 
         }
 
-        function captureAndVerify() {
+        async function captureAndVerify() {
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 1. Client-Side Pre-check: If browser native FaceDetector is available,
+            // check if face exists BEFORE sending 300KB payload across the network
+            if (browserFaceDetector) {
+                try {
+                    const faces = await browserFaceDetector.detect(canvas);
+                    if (!faces || faces.length === 0) {
+                        statusIndicator.className = 'status-indicator status-warning';
+                        statusIndicator.innerHTML = '<i class="fas fa-user-slash"></i> No teacher detected in frame';
+                        return; // Zero network call! Server saved from idle processing.
+                    }
+                } catch (err) {
+                    // Fall back to server verification if client API throws
+                }
+            }
 
             const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
             const formData = new FormData();
             formData.append('face_image', imageData);
 
-            // We need to fetch update_live_attendance. The URL might need to be resolved via template tag if not hardcoded.
-            // Using logic from original file: '{% url "update_live_attendance" %}'
             fetch('{% url "update_live_attendance" %}', {
                 method: 'POST',
                 headers: {
