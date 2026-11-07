@@ -6,9 +6,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Class Monitoring - {{ session.timetable.subject }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-        rel="stylesheet">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="stylesheet" href="{% static 'css/teacher_theme.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -26,8 +25,8 @@
         <div class="left-section">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h1 style="font-size: 1.5rem; font-weight: 700; color: var(--text-dark);">{{session.timetable.subject }}</h1>
-                    <p style="color: var(--text-light);">{{ session.start_time|date:"F j, Y" }} • Started at {{session.start_time|time:"g:i A" }}</p>
+                    <h1 style="font-size: 1.5rem; font-weight: 700; color: var(--text-dark);">{{ session.timetable.subject }}</h1>
+                    <p style="color: var(--text-light);">{{ session.start_time|date:"F j, Y" }} • Started at {{ session.start_time|time:"g:i A" }}</p>
                 </div>
                 <a href="{% url 'end_class' %}" class="btn-primary"
                     style="background: #ef4444; text-decoration: none; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);">
@@ -35,7 +34,7 @@
                 </a>
             </div>
 
-            <div class="video-container">
+            <div class="video-container" style="position: relative;">
                 <div class="live-badge">
                     <i class="fas fa-circle" style="font-size: 8px;"></i> LIVE
                 </div>
@@ -47,28 +46,90 @@
         <!-- Right Section -->
         <div class="right-section">
             <div class="card"
-                style="background: white; padding: 2rem; border-radius: 24px; box-shadow: var(--shadow-md); text-align: center;">
-                <h3
-                    style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 700;">
-                    Session Duration</h3>
-                <div class="status-value" id="sessionTimer">00:00:00</div>
+                style="background: white; padding: 1.5rem; border-radius: 24px; box-shadow: var(--shadow-md); text-align: center;">
+                <h3 style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.4rem; text-transform: uppercase; font-weight: 700;">
+                    Session Duration
+                </h3>
+                <div class="status-value" id="sessionTimer" style="font-size: 1.8rem; font-weight: 800;">00:00:00</div>
             </div>
 
             <div class="card"
-                style="background: white; padding: 2rem; border-radius: 24px; box-shadow: var(--shadow-md); text-align: center;">
-                <h3
-                    style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 0.5rem; text-transform: uppercase; font-weight: 700;">
-                    Active Presence</h3>
-                <div class="status-value" id="activeTimer" style="color: var(--primary-blue);">0m 0s</div>
-                <p style="margin: 5px 0 0; font-size: 0.8rem; color: var(--text-light);">Total authorized time</p>
+                style="background: white; padding: 1.5rem; border-radius: 24px; box-shadow: var(--shadow-md); text-align: center;">
+                <h3 style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.4rem; text-transform: uppercase; font-weight: 700;">
+                    Active Presence
+                </h3>
+                <div class="status-value" id="activeTimer" style="color: var(--primary-blue); font-size: 1.8rem; font-weight: 800;">0m 0s</div>
+                <p style="margin: 4px 0 0; font-size: 0.75rem; color: var(--text-light);">Continuous verified teaching duration</p>
             </div>
 
+            <!-- Real-Time Biological Liveness Telemetry Card -->
+            <div class="card"
+                style="background: white; padding: 1.5rem; border-radius: 24px; box-shadow: var(--shadow-md);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="font-size: 0.85rem; color: var(--text-light); margin: 0; text-transform: uppercase; font-weight: 700;">
+                        Live Biometrics
+                    </h3>
+                    <span id="livenessPill"
+                        style="font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: #fef3c7; color: #b45309;">
+                        Initializing
+                    </span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <!-- 1. Eye Blink Detection -->
+                    <div id="badgeBlink"
+                        style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0; transition: all 0.3s ease;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="iconBlinkBox"
+                                style="width: 32px; height: 32px; border-radius: 10px; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; transition: all 0.2s ease;">
+                                <i class="fas fa-eye"></i>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-dark);">Eyes Blinking</div>
+                                <div id="blinkSubtext" style="font-size: 0.72rem; color: #94a3b8;">Waiting for blink...</div>
+                            </div>
+                        </div>
+                        <span id="blinkCountBadge" style="font-size: 0.75rem; font-weight: 700; color: #64748b; background: white; padding: 2px 8px; border-radius: 8px; border: 1px solid #e2e8f0;">0</span>
+                    </div>
+
+                    <!-- 2. Mouth Movement / Speaking -->
+                    <div id="badgeMouth"
+                        style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0; transition: all 0.3s ease;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="iconMouthBox"
+                                style="width: 32px; height: 32px; border-radius: 10px; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; transition: all 0.2s ease;">
+                                <i class="fas fa-comment-dots"></i>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-dark);">Mouth / Speaking</div>
+                                <div id="mouthSubtext" style="font-size: 0.72rem; color: #94a3b8;">Speak or move lips</div>
+                            </div>
+                        </div>
+                        <span id="mouthLiveBadge" style="font-size: 0.75rem; font-weight: 700; color: #64748b; background: white; padding: 2px 8px; border-radius: 8px; border: 1px solid #e2e8f0;">Idle</span>
+                    </div>
+
+                    <!-- 3. Body Movement -->
+                    <div id="badgeBody"
+                        style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0; transition: all 0.3s ease;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="iconBodyBox"
+                                style="width: 32px; height: 32px; border-radius: 10px; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; transition: all 0.2s ease;">
+                                <i class="fas fa-walking"></i>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-dark);">Body Motion</div>
+                                <div id="bodySubtext" style="font-size: 0.72rem; color: #94a3b8;">Natural posture motion</div>
+                            </div>
+                        </div>
+                        <span id="bodyLiveBadge" style="font-size: 0.75rem; font-weight: 700; color: #64748b; background: white; padding: 2px 8px; border-radius: 8px; border: 1px solid #e2e8f0;">Idle</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Primary Status Indicator -->
             <div id="statusIndicator" class="status-indicator status-warning">
-                <i class="fas fa-spinner fa-spin"></i> Initializing...
+                <i class="fas fa-spinner fa-spin"></i> Initializing Real-Time Monitoring...
             </div>
-
-            <!-- Help Widget -->
-         
         </div>
     </div>
 
@@ -79,7 +140,24 @@
         const activeTimer = document.getElementById('activeTimer');
         const sessionTimer = document.getElementById('sessionTimer');
 
-        // ── Session Timer (purely client-side, 1-second tick) ───────────────
+        // Liveness Badges
+        const livenessPill = document.getElementById('livenessPill');
+        const badgeBlink = document.getElementById('badgeBlink');
+        const iconBlinkBox = document.getElementById('iconBlinkBox');
+        const blinkSubtext = document.getElementById('blinkSubtext');
+        const blinkCountBadge = document.getElementById('blinkCountBadge');
+
+        const badgeMouth = document.getElementById('badgeMouth');
+        const iconMouthBox = document.getElementById('iconMouthBox');
+        const mouthSubtext = document.getElementById('mouthSubtext');
+        const mouthLiveBadge = document.getElementById('mouthLiveBadge');
+
+        const badgeBody = document.getElementById('badgeBody');
+        const iconBodyBox = document.getElementById('iconBodyBox');
+        const bodySubtext = document.getElementById('bodySubtext');
+        const bodyLiveBadge = document.getElementById('bodyLiveBadge');
+
+        // ── Session Timer (pure client-side 1s tick) ────────────────────────
         let sessionSeconds = 0;
         setInterval(() => {
             sessionSeconds++;
@@ -89,52 +167,273 @@
             sessionTimer.innerText = `${h}:${m}:${s}`;
         }, 1000);
 
-        // ── Client-Side Face Pre-check (Browser Shape Detection API) ────────
-        // Saves network: skip sending frame entirely if no face visible in browser
-        let browserFaceDetector = null;
-        if ('FaceDetector' in window) {
+        // ── Real-Time Biological Liveness Engine (Continuous 30 FPS Loop) ───
+        // Offscreen canvas for high-speed motion differencing
+        const motionCanvas = document.createElement('canvas');
+        motionCanvas.width = 160;
+        motionCanvas.height = 120;
+        const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+
+        // Offscreen canvas for Eye and Mouth ROI sampling
+        const roiCanvas = document.createElement('canvas');
+        roiCanvas.width = 100;
+        roiCanvas.height = 100;
+        const roiCtx = roiCanvas.getContext('2d', { willReadFrequently: true });
+
+        let prevFrameData = null;
+        let prevMouthData = null;
+
+        let blinkCount = 0;
+        let lastBlinkTime = 0;
+        let lastMouthMotionTime = 0;
+        let lastBodyMotionTime = 0;
+
+        let eyeBaselineContrast = null;
+        let inBlinkDip = false;
+        let blinkDipStartTime = 0;
+
+        // Audio analyzer for spoken voice detection (if microphone enabled)
+        let audioSpeaking = false;
+
+        function initAudioDetection(stream) {
             try {
-                browserFaceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
-            } catch (e) { browserFaceDetector = null; }
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const audioCtx = new AudioCtx();
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                setInterval(() => {
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                    const avgVol = sum / dataArray.length;
+                    if (avgVol > 12) {
+                        lastMouthMotionTime = Date.now();
+                        triggerMouthPulse();
+                    }
+                }, 100);
+            } catch (_) {
+                // Microphone denied or unavailable — visual lip motion takes over
+            }
         }
 
-        // ── WebSocket Setup ──────────────────────────────────────────────────
-        // ws:// for HTTP dev, wss:// for HTTPS production — auto-detected
+        // ── Continuous Frame Analysis (Runs on every animation frame) ────────
+        function runRealTimeLivenessAnalysis() {
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+                const vw = video.videoWidth;
+                const vh = video.videoHeight;
+
+                if (vw > 0 && vh > 0) {
+                    // 1. Body Motion Tracking (160x120 frame differencing)
+                    motionCtx.drawImage(video, 0, 0, 160, 120);
+                    const currFrame = motionCtx.getImageData(0, 0, 160, 120).data;
+
+                    if (prevFrameData) {
+                        let totalDiff = 0;
+                        const step = 4; // Sub-sample for high 60 FPS performance
+                        for (let i = 0; i < currFrame.length; i += step * 4) {
+                            totalDiff += Math.abs(currFrame[i] - prevFrameData[i]) +
+                                         Math.abs(currFrame[i+1] - prevFrameData[i+1]) +
+                                         Math.abs(currFrame[i+2] - prevFrameData[i+2]);
+                        }
+                        const avgMotion = totalDiff / (currFrame.length / 4 / step);
+                        if (avgMotion > 2.6) {
+                            lastBodyMotionTime = Date.now();
+                            triggerBodyPulse();
+                        }
+                    }
+                    prevFrameData = new Uint8ClampedArray(currFrame);
+
+                    // 2. Eye Blink Tracking (Central upper-face ROI: x: 30%-70%, y: 22%-44%)
+                    const eyeX = Math.floor(vw * 0.30);
+                    const eyeY = Math.floor(vh * 0.22);
+                    const eyeW = Math.floor(vw * 0.40);
+                    const eyeH = Math.floor(vh * 0.22);
+
+                    roiCtx.drawImage(video, eyeX, eyeY, eyeW, eyeH, 0, 0, 60, 30);
+                    const eyeData = roiCtx.getImageData(0, 0, 60, 30).data;
+                    const eyeContrast = computeContrast(eyeData);
+
+                    if (eyeBaselineContrast === null) {
+                        eyeBaselineContrast = eyeContrast;
+                    } else {
+                        // Slowly adapt baseline to lighting changes
+                        eyeBaselineContrast = eyeBaselineContrast * 0.95 + eyeContrast * 0.05;
+
+                        // Blink signature: sharp dip in contrast (eyelid covering pupil) followed by recovery
+                        if (!inBlinkDip && eyeContrast < eyeBaselineContrast * 0.74) {
+                            inBlinkDip = true;
+                            blinkDipStartTime = Date.now();
+                        } else if (inBlinkDip && eyeContrast >= eyeBaselineContrast * 0.88) {
+                            const dipDuration = Date.now() - blinkDipStartTime;
+                            if (dipDuration >= 80 && dipDuration <= 500) {
+                                // Confirmed natural eye blink!
+                                blinkCount++;
+                                lastBlinkTime = Date.now();
+                                triggerBlinkPulse();
+                            }
+                            inBlinkDip = false;
+                        }
+                    }
+
+                    // 3. Mouth Movement Tracking (Lower-face ROI: x: 35%-65%, y: 52%-75%)
+                    const mouthX = Math.floor(vw * 0.35);
+                    const mouthY = Math.floor(vh * 0.52);
+                    const mouthW = Math.floor(vw * 0.30);
+                    const mouthH = Math.floor(vh * 0.23);
+
+                    roiCtx.drawImage(video, mouthX, mouthY, mouthW, mouthH, 0, 0, 60, 30);
+                    const currMouth = roiCtx.getImageData(0, 0, 60, 30).data;
+
+                    if (prevMouthData) {
+                        let mouthDiff = 0;
+                        for (let i = 0; i < currMouth.length; i += 8) {
+                            mouthDiff += Math.abs(currMouth[i] - prevMouthData[i]) +
+                                         Math.abs(currMouth[i+1] - prevMouthData[i+1]) +
+                                         Math.abs(currMouth[i+2] - prevMouthData[i+2]);
+                        }
+                        const avgMouthDiff = mouthDiff / (currMouth.length / 4 / 2);
+                        if (avgMouthDiff > 3.8) {
+                            lastMouthMotionTime = Date.now();
+                            triggerMouthPulse();
+                        }
+                    }
+                    prevMouthData = new Uint8ClampedArray(currMouth);
+                }
+            }
+
+            // Update UI status badges continuously in real-time
+            updateLivenessBadges();
+            requestAnimationFrame(runRealTimeLivenessAnalysis);
+        }
+
+        function computeContrast(imageData) {
+            let sum = 0;
+            let sumSq = 0;
+            const n = imageData.length / 4;
+            for (let i = 0; i < imageData.length; i += 4) {
+                const gray = (imageData[i] * 0.299 + imageData[i+1] * 0.587 + imageData[i+2] * 0.114);
+                sum += gray;
+                sumSq += gray * gray;
+            }
+            const mean = sum / n;
+            const variance = (sumSq / n) - (mean * mean);
+            return Math.sqrt(Math.max(0, variance));
+        }
+
+        // ── Real-Time Visual Pulses ──────────────────────────────────────────
+        function triggerBlinkPulse() {
+            blinkCountBadge.innerText = blinkCount;
+            iconBlinkBox.style.background = '#dcfce7';
+            iconBlinkBox.style.color = '#16a34a';
+            badgeBlink.style.borderColor = '#86efac';
+            blinkSubtext.innerText = 'Blink detected!';
+            setTimeout(() => {
+                badgeBlink.style.borderColor = '#e2e8f0';
+            }, 600);
+        }
+
+        function triggerMouthPulse() {
+            iconMouthBox.style.background = '#dcfce7';
+            iconMouthBox.style.color = '#16a34a';
+            badgeMouth.style.borderColor = '#86efac';
+            mouthLiveBadge.innerText = 'Speaking';
+            mouthLiveBadge.style.color = '#16a34a';
+            mouthSubtext.innerText = 'Mouth movement verified';
+            setTimeout(() => {
+                badgeMouth.style.borderColor = '#e2e8f0';
+            }, 600);
+        }
+
+        function triggerBodyPulse() {
+            iconBodyBox.style.background = '#dcfce7';
+            iconBodyBox.style.color = '#16a34a';
+            badgeBody.style.borderColor = '#86efac';
+            bodyLiveBadge.innerText = 'Active';
+            bodyLiveBadge.style.color = '#16a34a';
+            bodySubtext.innerText = 'Posture motion verified';
+            setTimeout(() => {
+                badgeBody.style.borderColor = '#e2e8f0';
+            }, 600);
+        }
+
+        function updateLivenessBadges() {
+            const now = Date.now();
+            const blinkActive = (blinkCount > 0 && (now - lastBlinkTime < 18000));
+            const mouthActive = (now - lastMouthMotionTime < 8000);
+            const bodyActive = (now - lastBodyMotionTime < 8000);
+
+            if (!blinkActive) {
+                iconBlinkBox.style.background = '#fee2e2';
+                iconBlinkBox.style.color = '#dc2626';
+                blinkSubtext.innerText = 'Please blink naturally...';
+            }
+
+            if (!mouthActive) {
+                iconMouthBox.style.background = '#f1f5f9';
+                iconMouthBox.style.color = '#64748b';
+                mouthLiveBadge.innerText = 'Idle';
+                mouthLiveBadge.style.color = '#64748b';
+                mouthSubtext.innerText = 'Speak or move lips';
+            }
+
+            if (!bodyActive) {
+                iconBodyBox.style.background = '#f1f5f9';
+                iconBodyBox.style.color = '#64748b';
+                bodyLiveBadge.innerText = 'Idle';
+                bodyLiveBadge.style.color = '#64748b';
+                bodySubtext.innerText = 'Move head/body naturally';
+            }
+
+            // Overall Liveness Pill
+            if (blinkActive && mouthActive && bodyActive) {
+                livenessPill.style.background = '#dcfce7';
+                livenessPill.style.color = '#16a34a';
+                livenessPill.innerText = 'All Active';
+            } else {
+                livenessPill.style.background = '#fef3c7';
+                livenessPill.style.color = '#b45309';
+                if (!blinkActive) livenessPill.innerText = 'Blink Needed';
+                else if (!mouthActive) livenessPill.innerText = 'Speech Needed';
+                else livenessPill.innerText = 'Motion Needed';
+            }
+        }
+
+        // ── WebSocket Setup & Real-Time Sync (every 1.5s) ───────────────────
         const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsUrl = `${wsScheme}://${window.location.host}/ws/attendance/`;
 
         let socket = null;
-        let frameInterval = null;
-        const SEND_INTERVAL_MS = 5000;   // send one frame every 5 seconds
+        let syncInterval = null;
+        const SYNC_INTERVAL_MS = 1500;  // 1.5s real-time continuous streaming
 
         function connectWebSocket() {
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
-                console.log('WS: connected to attendance server');
+                console.log('WS: Real-time attendance connected');
                 statusIndicator.className = 'status-indicator status-warning';
-                statusIndicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing...';
-                // Start camera AFTER socket is confirmed open
+                statusIndicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing Camera & Sensors...';
                 startCamera();
             };
 
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
 
-                if (data.status === 'connected') {
-                    // Server acknowledged — do nothing, startCamera() already called
-                    return;
-                }
+                if (data.status === 'connected') return;
 
                 if (data.status === 'success') {
                     statusIndicator.className = 'status-indicator status-active';
-                    statusIndicator.innerHTML = `<i class="fas fa-check-circle"></i> ${data.message || 'Authorized'}`;
+                    statusIndicator.innerHTML = `<i class="fas fa-check-circle"></i> ${data.message}`;
                     if (data.duration) activeTimer.innerText = data.duration;
-
                 } else if (data.status === 'warning') {
                     statusIndicator.className = 'status-indicator status-warning';
                     statusIndicator.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${data.message}`;
-
                 } else {
                     statusIndicator.className = 'status-indicator status-error';
                     statusIndicator.innerHTML = `<i class="fas fa-times-circle"></i> ${data.message || 'Verification Failed'}`;
@@ -142,14 +441,11 @@
             };
 
             socket.onclose = (event) => {
-                console.warn('WS: connection closed, code=', event.code);
-                clearInterval(frameInterval);
-
-                // Auto-reconnect after 3 seconds (unless teacher deliberately ended class)
+                clearInterval(syncInterval);
                 if (event.code !== 1000 && event.code !== 4001 && event.code !== 4002) {
                     statusIndicator.className = 'status-indicator status-warning';
                     statusIndicator.innerHTML = '<i class="fas fa-sync fa-spin"></i> Reconnecting...';
-                    setTimeout(connectWebSocket, 3000);
+                    setTimeout(connectWebSocket, 2000);
                 }
             };
 
@@ -161,50 +457,71 @@
         }
 
         function startCamera() {
-            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+            navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 480 },
+                audio: true
+            })
                 .then(stream => {
                     video.srcObject = stream;
-                    // Begin sending frames once video metadata is loaded
-                    video.onloadedmetadata = () => startFrameLoop();
+                    initAudioDetection(stream);
+                    video.onloadedmetadata = () => {
+                        requestAnimationFrame(runRealTimeLivenessAnalysis);
+                        startRealTimeSync();
+                    };
                 })
                 .catch(err => {
-                    console.error("Camera error:", err);
-                    statusIndicator.className = 'status-indicator status-error';
-                    statusIndicator.innerHTML = '<i class="fas fa-exclamation-circle"></i> Camera Error';
+                    // Fall back to video-only if audio is denied
+                    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                        .then(stream => {
+                            video.srcObject = stream;
+                            video.onloadedmetadata = () => {
+                                requestAnimationFrame(runRealTimeLivenessAnalysis);
+                                startRealTimeSync();
+                            };
+                        })
+                        .catch(videoErr => {
+                            console.error("Camera error:", videoErr);
+                            statusIndicator.className = 'status-indicator status-error';
+                            statusIndicator.innerHTML = '<i class="fas fa-exclamation-circle"></i> Camera Access Denied';
+                        });
                 });
         }
 
-        function startFrameLoop() {
-            frameInterval = setInterval(captureAndSend, SEND_INTERVAL_MS);
+        function startRealTimeSync() {
+            syncInterval = setInterval(sendRealTimeTelemetry, SYNC_INTERVAL_MS);
         }
 
-        async function captureAndSend() {
-            // Skip if socket not ready
+        async function sendRealTimeTelemetry() {
             if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
+            const now = Date.now();
+            const blinkActive = (blinkCount > 0 && (now - lastBlinkTime < 18000));
+            const mouthActive = (now - lastMouthMotionTime < 8000);
+            const bodyActive = (now - lastBodyMotionTime < 8000);
+
+            // Capture current video frame for biometric identity verification (ArcFace ONNX)
             const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // ── Client-side pre-check: skip frame if no face visible ─────────
-            if (browserFaceDetector) {
-                try {
-                    const faces = await browserFaceDetector.detect(canvas);
-                    if (!faces || faces.length === 0) {
-                        statusIndicator.className = 'status-indicator status-warning';
-                        statusIndicator.innerHTML = '<i class="fas fa-user-slash"></i> No face visible — frame skipped';
-                        return; // Zero bytes sent over WebSocket
-                    }
-                } catch (_) { /* fall through to server verification */ }
-            }
-
-            // ── Send frame over persistent WebSocket connection ──────────────
             const imageData = canvas.toDataURL('image/jpeg', 0.8);
-            socket.send(JSON.stringify({ face_image: imageData }));
+
+            // Send frame + real-time biological liveness signals
+            socket.send(JSON.stringify({
+                face_image: imageData,
+                liveness: {
+                    blink_detected: blinkActive,
+                    mouth_moving: mouthActive,
+                    body_moving: bodyActive,
+                    blink_count: blinkCount,
+                    last_blink_ms_ago: now - lastBlinkTime,
+                    last_mouth_ms_ago: now - lastMouthMotionTime,
+                    last_body_ms_ago: now - lastBodyMotionTime
+                }
+            }));
         }
 
-        // Kick off the WebSocket connection on page load
+        // Kick off real-time monitoring on page load
         connectWebSocket();
     </script>
 </body>

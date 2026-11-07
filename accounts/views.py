@@ -12,7 +12,7 @@ import numpy as np
 import cv2 
 from .utils.face_embedding import get_embedding, find_target_face_in_frame
 from .utils.face_matcher import match_face
-from .utils.liveness_detector import check_liveness_challenge, check_single_frame_liveness
+from .utils.liveness_detector import check_liveness_challenge, check_single_frame_liveness, check_active_presence_telemetry
 import json
 from django.conf import settings 
 from django.contrib.auth import authenticate, login, logout as auth_logout 
@@ -779,16 +779,6 @@ def update_live_attendance(request):
             nparr = np.frombuffer(image_data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-            # Continuous liveness check (prevents static photo / phone screen spoofing during lecture)
-            is_live_frame, live_detail = check_single_frame_liveness(frame)
-            if not is_live_frame:
-                return JsonResponse({'status': 'warning', 'message': f'Active presence check: {live_detail}'})
-
-            live_emb = get_embedding(frame)
-            
-            if live_emb is None:
-                 return JsonResponse({'status': 'warning', 'message': 'No face detected.'})
-
             # Load stored embedding
             project_root = settings.BASE_DIR
             user_dir = os.path.join(project_root, "data", "users", request.user.username)
@@ -822,13 +812,47 @@ def update_live_attendance(request):
                  return JsonResponse({'status': 'error', 'message': 'Registration data missing. Please re-register.'})
             
             # --- Multi-Face Presence Resolution ---
-            # If multiple faces appear (e.g. teacher with students or colleagues in classroom),
-            # scan all detected faces to locate the teacher instead of dropping the frame.
+            # Locate the teacher's face in the frame first
             is_matched, matched_box, total_faces = find_target_face_in_frame(frame, stored_emb)
             
             if is_matched:
-                # Increment active duration (5 seconds)
-                session.total_active_duration += datetime.timedelta(seconds=5)
+                # Real-Time Biological Liveness Verification (Eyes, Mouth, Body)
+                liveness_raw = request.POST.get('liveness', '{}')
+                try:
+                    liveness_data = json.loads(liveness_raw) if isinstance(liveness_raw, str) else liveness_raw
+                except Exception:
+                    liveness_data = {}
+
+                blink_ok = bool(liveness_data.get('blink_detected', False))
+                mouth_ok = bool(liveness_data.get('mouth_moving', False))
+                body_ok = bool(liveness_data.get('body_moving', False))
+
+                # Server-side anti-spoof check
+                from .utils.liveness_detector import detect_screen_texture_spoof
+                is_spoof, spoof_reason = detect_screen_texture_spoof(frame, face_box=matched_box)
+                if is_spoof:
+                    return JsonResponse({'status': 'warning', 'message': f'Liveness check: {spoof_reason}'})
+
+                if not blink_ok:
+                    return JsonResponse({
+                        'status': 'warning',
+                        'message': 'Live check: Please blink your eyes naturally to confirm active presence.'
+                    })
+
+                if not mouth_ok:
+                    return JsonResponse({
+                        'status': 'warning',
+                        'message': 'Live check: Please speak or move your lips to confirm active teaching.'
+                    })
+
+                if not body_ok:
+                    return JsonResponse({
+                        'status': 'warning',
+                        'message': 'Live check: Natural body movement required. Static photo detected.'
+                    })
+
+                # Increment active duration (2 seconds)
+                session.total_active_duration += datetime.timedelta(seconds=2)
                 session.save()
                 
                 # Format duration for display
@@ -837,17 +861,22 @@ def update_live_attendance(request):
                 seconds = total_seconds % 60
                 duration_str = f"{minutes}m {seconds}s"
 
-                message = 'Authorized'
+                message = 'Authorized (Live: Eyes, Mouth & Body Verified)'
                 if total_faces > 1:
-                    message = f'Authorized (Teacher identified among {total_faces} people in frame)'
+                    message = f'Authorized (Teacher identified among {total_faces} people • Live Presence Verified)'
                 
                 return JsonResponse({
                     'status': 'success', 
                     'message': message,
                     'duration': duration_str,
-                    'total_faces': total_faces
+                    'total_faces': total_faces,
+                    'liveness_status': {'blink': True, 'mouth': True, 'body': True}
                 })
             else:
+                if 'live_liveness_state' in request.session:
+                    del request.session['live_liveness_state']
+                    request.session.modified = True
+
                 if total_faces > 0:
                     return JsonResponse({
                         'status': 'warning', 

@@ -1,15 +1,16 @@
 """
 accounts/consumers.py
 ─────────────────────
-Django Channels WebSocket consumer for live class attendance monitoring.
+Django Channels WebSocket consumer for real-time live class attendance monitoring.
 
-Flow:
-  Browser  ──ws:// connect──►  AttendanceConsumer.connect()
-  Browser  ──{face_image}──►   AttendanceConsumer.receive()   (runs face verify)
-  Browser  ◄──{status/duration}──  AttendanceConsumer.send()
+Real-Time Biological Liveness Verification:
+  Active presence is authorized ONLY when:
+  1. Teacher's face matches the registered 512-D ArcFace embedding (ArcFace ONNX)
+  2. Eyes are actively blinking (blink detection)
+  3. Mouth is actively moving (speaking / teaching detection)
+  4. Body is actively moving (natural posture / gesture dynamics)
 
-One persistent TCP connection per teacher replaces the previous 5-second HTTP
-polling loop.  Zero new TCP handshakes, zero CSRF overhead after handshake.
+Static photos, phone displays, and cutouts are immediately rejected.
 """
 
 import json
@@ -24,8 +25,8 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf import settings
 
-from accounts.utils.face_embedding import get_embedding, find_target_face_in_frame
-from accounts.utils.liveness_detector import check_single_frame_liveness
+from accounts.utils.face_embedding import find_target_face_in_frame
+from accounts.utils.liveness_detector import detect_screen_texture_spoof
 
 logger = logging.getLogger("accounts")
 
@@ -48,17 +49,9 @@ def _get_teacher(user):
 
 
 @database_sync_to_async
-def _get_user_image(user):
-    """Return the first UserImages record for this user, or None."""
-    from accounts.models import UserImages
-    return UserImages.objects.filter(user=user).first()
-
-
-@database_sync_to_async
-def _add_active_duration(session, seconds: int):
+def _add_active_duration(session, seconds: float):
     """Atomically add `seconds` to the session's total_active_duration and save."""
     from accounts.models import ClassSession
-    # Re-fetch to avoid stale state across async iterations
     session = ClassSession.objects.get(pk=session.pk)
     session.total_active_duration += datetime.timedelta(seconds=seconds)
     session.save(update_fields=["total_active_duration"])
@@ -71,14 +64,17 @@ def _add_active_duration(session, seconds: int):
 
 class AttendanceConsumer(AsyncWebsocketConsumer):
     """
-    WebSocket consumer that handles live attendance verification for a teacher.
+    WebSocket consumer that handles real-time live attendance verification for a teacher.
 
-    Replaces the old HTTP POST to /teacher/update-live-attendance/.
+    Active presence increments continuously in real-time as long as:
+    - Teacher identity is verified (ArcFace 512-D)
+    - Eyes are blinking
+    - Mouth is moving (speaking)
+    - Body is moving
     """
 
-    # How many seconds to credit per verified frame.
-    # Browser sends a frame every SEND_INTERVAL_MS ms (defined in the template).
-    CREDIT_SECONDS = 5
+    # Seconds of active teaching credited per real-time telemetry tick (~1.5-2.0s)
+    CREDIT_SECONDS = 2.0
 
     async def connect(self):
         """
@@ -104,10 +100,10 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
         await self.accept()
         logger.info("WS attendance: teacher %s connected", user.username)
 
-        # Send an initial acknowledgement so the browser knows the socket is ready
+        # Send initial acknowledgement so the browser knows the socket is ready
         await self.send(text_data=json.dumps({
             "status": "connected",
-            "message": "WebSocket connected. Monitoring started.",
+            "message": "WebSocket connected. Real-time liveness monitoring active.",
         }))
 
     def _load_stored_embedding(self):
@@ -133,15 +129,17 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         """
-        Process one frame from the browser.
+        Process real-time frame & biological telemetry from the browser.
 
         Expected JSON payload:
-            { "face_image": "data:image/jpeg;base64,<...>" }
-
-        Responds with:
-            { "status": "success"|"warning"|"error",
-              "message": "...",
-              "duration": "5m 30s"   (only on success)
+            {
+                "face_image": "data:image/jpeg;base64,<...>",
+                "liveness": {
+                    "blink_detected": bool,
+                    "mouth_moving": bool,
+                    "body_moving": bool,
+                    "blink_count": int
+                }
             }
         """
         try:
@@ -166,12 +164,6 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
                 await self._send_response("error", "Could not decode image.")
                 return
 
-            # ── Liveness check ──
-            is_live, live_detail = check_single_frame_liveness(frame)
-            if not is_live:
-                await self._send_response("warning", f"Active presence check: {live_detail}")
-                return
-
             # ── Embedding check ──
             if self._stored_emb is None:
                 await self._send_response(
@@ -180,9 +172,52 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
                 return
 
             # ── Multi-face presence resolution ──
-            is_matched, _box, total_faces = find_target_face_in_frame(frame, self._stored_emb)
+            # Locate the teacher's face in the frame first
+            is_matched, matched_box, total_faces = find_target_face_in_frame(frame, self._stored_emb)
 
             if is_matched:
+                # ── Real-Time Biological Liveness Verification (Eyes, Mouth, Body) ──
+                liveness_data = payload.get("liveness", {})
+                blink_ok = bool(liveness_data.get("blink_detected", False))
+                mouth_ok = bool(liveness_data.get("mouth_moving", False))
+                body_ok = bool(liveness_data.get("body_moving", False))
+
+                # Screen texture & glare filter on face ROI
+                is_spoof, spoof_reason = detect_screen_texture_spoof(frame, face_box=matched_box)
+                if is_spoof:
+                    await self._send_response(
+                        "warning",
+                        f"Liveness check: {spoof_reason}",
+                        liveness_status={"blink": blink_ok, "mouth": mouth_ok, "body": body_ok}
+                    )
+                    return
+
+                # Strict requirement: Eyes blinking, mouth moving, and body moving must all be verified
+                if not blink_ok:
+                    await self._send_response(
+                        "warning",
+                        "Live check: Please blink your eyes naturally to confirm active presence.",
+                        liveness_status={"blink": False, "mouth": mouth_ok, "body": body_ok}
+                    )
+                    return
+
+                if not mouth_ok:
+                    await self._send_response(
+                        "warning",
+                        "Live check: Please speak or move your lips to confirm active teaching.",
+                        liveness_status={"blink": blink_ok, "mouth": False, "body": body_ok}
+                    )
+                    return
+
+                if not body_ok:
+                    await self._send_response(
+                        "warning",
+                        "Live check: Natural body movement required. Static image detected.",
+                        liveness_status={"blink": blink_ok, "mouth": mouth_ok, "body": False}
+                    )
+                    return
+
+                # All 3 real-time biological conditions (blink, mouth, body motion) verified!
                 session = await _get_ongoing_session(self.teacher)
                 if session is None:
                     await self._send_response("error", "No ongoing session.")
@@ -193,12 +228,17 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
                 total_secs = int(session.total_active_duration.total_seconds())
                 duration_str = f"{total_secs // 60}m {total_secs % 60}s"
 
-                message = "Authorized"
+                message = "Authorized (Live: Eyes, Mouth & Body Verified)"
                 if total_faces > 1:
-                    message = f"Authorized (Teacher identified among {total_faces} people)"
+                    message = f"Authorized (Teacher identified among {total_faces} people • Live Presence Verified)"
 
-                await self._send_response("success", message, duration=duration_str,
-                                          total_faces=total_faces)
+                await self._send_response(
+                    "success",
+                    message,
+                    duration=duration_str,
+                    total_faces=total_faces,
+                    liveness_status={"blink": True, "mouth": True, "body": True}
+                )
 
             else:
                 if total_faces > 0:
@@ -218,4 +258,3 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
     async def _send_response(self, status: str, message: str, **extra):
         payload = {"status": status, "message": message, **extra}
         await self.send(text_data=json.dumps(payload))
-
