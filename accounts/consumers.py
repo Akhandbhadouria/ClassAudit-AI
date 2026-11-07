@@ -218,3 +218,4 @@ class AttendanceConsumer(AsyncWebsocketConsumer):
     async def _send_response(self, status: str, message: str, **extra):
         payload = {"status": status, "message": message, **extra}
         await self.send(text_data=json.dumps(payload))
+

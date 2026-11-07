@@ -741,6 +741,8 @@
         return div.innerHTML;
     }
 
+    let conversationHistory = [];
+
     async function sendMessage() {
         const query = queryInput.value.trim();
         if (!query) return;
@@ -759,7 +761,10 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': CSRF_TOKEN,
                 },
-                body: JSON.stringify({ query })
+                body: JSON.stringify({ 
+                    query: query,
+                    history: conversationHistory 
+                })
             });
 
             const data = await response.json();
@@ -768,6 +773,16 @@
                 appendAIMessage(data.error || 'An unexpected error occurred.', [], true);
             } else {
                 appendAIMessage(data.answer, data.sources);
+                // Keep multi-turn history updated
+                if (data.history) {
+                    conversationHistory = data.history;
+                } else {
+                    conversationHistory.push({ role: 'user', content: query });
+                    conversationHistory.push({ role: 'assistant', content: data.answer });
+                    if (conversationHistory.length > 6) {
+                        conversationHistory = conversationHistory.slice(-6);
+                    }
+                }
             }
 
         } catch (err) {

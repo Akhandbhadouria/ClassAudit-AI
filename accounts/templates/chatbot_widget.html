@@ -811,6 +811,7 @@
     const DEL_BASE = "{% url 'delete_document' doc_id=0 %}".replace('/0/', '/');
     const CSRF = "{{ csrf_token }}";
     let pendingFiles = [];
+    let widgetHistory = [];
 
     /* ── Panel toggle ── */
     window.aiToggle = () => document.getElementById('ai-panel').classList.toggle('open');
@@ -843,12 +844,21 @@
         const r = await fetch(CHAT_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-          body: JSON.stringify({ query })
+          body: JSON.stringify({ query, history: widgetHistory })
         });
         const d = await r.json();
         removeEl(tid);
         if (d.error) appendMsg('error', d.error);
-        else appendBotMsg(d.answer, d.sources || []);
+        else {
+          appendBotMsg(d.answer, d.sources || []);
+          if (d.history) {
+            widgetHistory = d.history;
+          } else {
+            widgetHistory.push({ role: 'user', content: query });
+            widgetHistory.push({ role: 'assistant', content: d.answer });
+            if (widgetHistory.length > 6) widgetHistory = widgetHistory.slice(-6);
+          }
+        }
       } catch {
         removeEl(tid);
         appendMsg('error', 'Network error. Please try again.');

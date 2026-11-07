@@ -1,3 +1,11 @@
+"""
+RAG Engine for ClassAudit AI Chatbot with Multi-Turn Conversation Memory.
+- Per-principal ChromaDB collections (each school has its own knowledge base).
+- Supports PDF, Markdown, and TXT files.
+- Uses sentence-transformers for embeddings and Groq (LLaMA 3.3 70B) for generation.
+- Supports multi-turn contextual conversations via rolling history.
+"""
+
 import os
 import re
 import chromadb
@@ -38,6 +46,7 @@ def _get_groq_client() -> Groq:
 
 
 def _get_collection(principal_id: int) -> chromadb.Collection:
+    """Get or create a ChromaDB collection for a specific principal."""
     client = _get_chroma_client()
     collection_name = f"principal_{principal_id}"
     return client.get_or_create_collection(
@@ -123,7 +132,10 @@ def ingest_file_for_principal(
     title: str,
     doc_id: str,
 ) -> int:
-    
+    """
+    Extract, chunk, embed, and store a single document into the principal's collection.
+    Returns the number of chunks ingested.
+    """
     embed_model = _get_embedding_model()
     collection = _get_collection(principal_id)
     filename = os.path.basename(file_path)
@@ -176,7 +188,6 @@ def retrieve_context(query: str, principal_id: int, n_results: int = 5) -> list[
     embed_model = _get_embedding_model()
     collection = _get_collection(principal_id)
 
-    # Check if collection has any documents
     if collection.count() == 0:
         return []
 
@@ -205,7 +216,7 @@ def retrieve_context(query: str, principal_id: int, n_results: int = 5) -> list[
     return chunks
 
 
-# ── Generation ──
+# ── Generation with Multi-Turn Context Memory ──
 
 SYSTEM_PROMPT = """You are the ClassAudit AI Institutional Assistant — a professional, helpful, and accurate assistant for teachers and principals at an educational institution.
 
@@ -213,30 +224,48 @@ You answer questions exclusively based on the provided institutional documents: 
 
 Rules you MUST follow:
 1. Answer ONLY from the provided Context. Do not invent policies or rules.
-2. If the answer is not in the context, say: "I couldn't find this information in the institutional documents. Please contact your Head of Department or Principal."
-3. Keep responses clear, structured, and professional.
+2. If the user asks a follow-up question (e.g. "What if I am late?", "And for teachers?"), use the Conversation History to understand their context, but ground facts strictly in the institutional documents.
+3. If the answer is not in the context, say: "I couldn't find this information in the institutional documents. Please contact your Head of Department or Principal."
 4. When citing a rule, reference the document name (e.g., "According to the Attendance Policy...").
 5. Use bullet points or numbered steps for procedural answers.
 6. Be concise — do not repeat information unnecessarily."""
 
 
-def generate_answer(query: str, context_chunks: list[dict]) -> str:
-    """Generate an answer using Groq LLaMA 3.3 70B from retrieved context."""
+def generate_answer(query: str, context_chunks: list[dict], conversation_history: list[dict] = None) -> str:
+    """
+    Generate an answer using Groq LLaMA 3.3 70B from retrieved context and multi-turn chat history.
+    
+    Args:
+        query: Current user query
+        context_chunks: Retrieved document passages
+        conversation_history: List of previous turns [{'role': 'user'|'assistant', 'content': '...'}]
+    """
     client = _get_groq_client()
 
     context_text = ""
     for i, chunk in enumerate(context_chunks, 1):
         context_text += f"\n--- Source {i}: {chunk['title']} ---\n{chunk['text']}\n"
 
+    # Assemble messages payload with system prompt
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    # Inject last 3-4 turns of conversation memory for multi-turn coherence
+    if conversation_history:
+        recent_history = conversation_history[-6:]  # Up to 3 user-assistant pairs
+        for turn in recent_history:
+            role = turn.get("role")
+            content = turn.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+
+    # Final prompt with institutional document context + current question
     user_message = f"CONTEXT FROM INSTITUTIONAL DOCUMENTS:\n{context_text}\n\nUSER QUESTION:\n{query}"
+    messages.append({"role": "user", "content": user_message})
 
     try:
         response = client.chat.completions.create(
             model="openai/gpt-oss-120b",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
+            messages=messages,
             temperature=0.3,
             max_tokens=1024,
         )
@@ -247,15 +276,22 @@ def generate_answer(query: str, context_chunks: list[dict]) -> str:
 
 # ── Main Entry Point ──
 
-def chat(query: str, principal_id: int) -> dict:
+def chat(query: str, principal_id: int, conversation_history: list[dict] = None) -> dict:
     """
-    RAG chat — retrieves from principal's own knowledge base and generates answer.
+    RAG chat with multi-turn conversation memory.
     """
     if not query or not query.strip():
         return {"answer": "Please ask a question.", "sources": []}
 
     try:
-        context_chunks = retrieve_context(query, principal_id, n_results=5)
+        # Contextual search: if follow-up query is very short, optionally augment with last user query
+        search_query = query
+        if conversation_history and len(query.split()) <= 4:
+            last_user_query = next((t["content"] for t in reversed(conversation_history) if t.get("role") == "user"), None)
+            if last_user_query:
+                search_query = f"{last_user_query} {query}"
+
+        context_chunks = retrieve_context(search_query, principal_id, n_results=5)
 
         if not context_chunks:
             return {
@@ -263,7 +299,7 @@ def chat(query: str, principal_id: int) -> dict:
                 "sources": []
             }
 
-        answer = generate_answer(query, context_chunks)
+        answer = generate_answer(query, context_chunks, conversation_history=conversation_history)
 
         # Deduplicate sources
         seen = set()

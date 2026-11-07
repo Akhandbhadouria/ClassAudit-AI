@@ -48,7 +48,7 @@ def chatbot_page(request):
 @login_required
 @require_http_methods(["POST"])
 def chat_api(request):
-    """POST /chatbot/api/ — accepts a query, returns RAG answer."""
+    """POST /chatbot/api/ — accepts query & conversation history, maintains session-based memory."""
     principal_id = _get_principal_id(request)
     if not principal_id:
         return JsonResponse({"error": "Could not identify your institution."}, status=400)
@@ -62,13 +62,44 @@ def chat_api(request):
         if len(query) > 1000:
             return JsonResponse({"error": "Query too long. Max 1000 characters."}, status=400)
 
-        result = rag_engine.chat(query, principal_id)
-        return JsonResponse({"answer": result["answer"], "sources": result["sources"]})
+        # 1. Fetch conversation history from request body OR fallback to Django session
+        history = body.get("history")
+        if history is None:
+            # Session-based memory
+            history = request.session.get("chatbot_history", [])
+
+        # 2. Get answer from RAG engine with multi-turn context
+        result = rag_engine.chat(query, principal_id, conversation_history=history)
+        answer = result["answer"]
+        sources = result["sources"]
+
+        # 3. Update session memory (last 6 turns = 3 Q&A pairs)
+        session_history = request.session.get("chatbot_history", [])
+        session_history.append({"role": "user", "content": query})
+        session_history.append({"role": "assistant", "content": answer})
+        request.session["chatbot_history"] = session_history[-6:]
+        request.session.modified = True
+
+        return JsonResponse({
+            "answer": answer, 
+            "sources": sources,
+            "history": request.session["chatbot_history"]
+        })
 
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON body."}, status=400)
     except Exception as e:
         return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def clear_chat_history(request):
+    """Clears the session-based multi-turn memory."""
+    if "chatbot_history" in request.session:
+        del request.session["chatbot_history"]
+        request.session.modified = True
+    return JsonResponse({"status": "success", "message": "Conversation memory reset."})
 
 
 # ── Document Management (Principal only) ──

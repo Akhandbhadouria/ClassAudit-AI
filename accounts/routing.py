@@ -12,3 +12,4 @@ from accounts import consumers
 websocket_urlpatterns = [
     re_path(r"^ws/attendance/$", consumers.AttendanceConsumer.as_asgi()),
 ]
+
