@@ -74,15 +74,51 @@ TEMPLATES = [
 WSGI_APPLICATION = 'facere.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
+# ── Database Configuration ──
+# Dev default → SQLite3  |  Production → PostgreSQL (via .env)
+#
+# To switch to PostgreSQL, set in .env:
+#   DB_ENGINE=django.db.backends.postgresql
+#   DB_NAME=classaudit_db
+#   DB_USER=your_pg_user
+#   DB_PASSWORD=your_pg_password
+#   DB_HOST=localhost        (or RDS endpoint, Cloud SQL proxy, etc.)
+#   DB_PORT=5432
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": "mydatabase",
+_DB_ENGINE = config('DB_ENGINE', default='django.db.backends.sqlite3')
+
+if _DB_ENGINE == 'django.db.backends.sqlite3':
+    # SQLite — development / single-server use
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / config('DB_NAME', default='mydatabase'),
+        }
     }
-}
+else:
+    # PostgreSQL — production / multi-teacher concurrent load
+    DATABASES = {
+        "default": {
+            "ENGINE": _DB_ENGINE,
+            "NAME": config('DB_NAME', default='classaudit_db'),
+            "USER": config('DB_USER', default=''),
+            "PASSWORD": config('DB_PASSWORD', default=''),
+            "HOST": config('DB_HOST', default='localhost'),
+            "PORT": config('DB_PORT', default='5432'),
+            # ── Connection Pooling ──
+            # Reuse DB connections across requests (saves TCP handshake overhead).
+            # 60 seconds idle timeout before connection is closed.
+            "CONN_MAX_AGE": config('DB_CONN_MAX_AGE', default=60, cast=int),
+            "CONN_HEALTH_CHECKS": True,  # auto-reconnect on stale connections
+            "OPTIONS": {
+                "connect_timeout": 10,          # fail fast if DB unreachable
+                "options": "-c statement_timeout=30000",  # 30 s query timeout
+            },
+            "TEST": {
+                "NAME": config('DB_TEST_NAME', default='test_classaudit_db'),
+            },
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
