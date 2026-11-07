@@ -49,6 +49,12 @@ local_settings.py
 # ── Generated reports ──
 defaulter_report.csv
 
+# ── Personal Preparation & Analysis Docs (Keep local, omit from GitHub) ──
+ClassAudit_AI_Presentation.pptx
+classaudit_interview_qa.md
+group_work_division.md
+project_analysis.md
+
 # ── Live attendance mini (sub-project venv) ──
 live-attendance-mini/venv/
 
