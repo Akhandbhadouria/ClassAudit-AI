@@ -6,6 +6,11 @@ Django==5.1.3
 asgiref==3.8.1
 sqlparse==0.5.3
 
+# ── WebSocket / Async ──
+channels==4.1.0          # Django Channels — WebSocket support
+daphne==4.1.2            # ASGI server for Channels (dev + production)
+# channels-redis==4.2.0  # Uncomment for multi-worker production (requires Redis)
+
 # ── Face Recognition & Computer Vision ──
 mediapipe==0.10.14
 onnxruntime==1.23.2

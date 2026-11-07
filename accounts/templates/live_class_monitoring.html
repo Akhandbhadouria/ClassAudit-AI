@@ -79,19 +79,7 @@
         const activeTimer = document.getElementById('activeTimer');
         const sessionTimer = document.getElementById('sessionTimer');
 
-        // Start Camera
-        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
-            .then(stream => {
-                video.srcObject = stream;
-                startTracking();
-            })
-            .catch(err => {
-                console.error("Camera error:", err);
-                statusIndicator.className = 'status-indicator status-error';
-                statusIndicator.innerHTML = '<i class="fas fa-exclamation-circle"></i> Camera Error';
-            });
-
-        // Simple Session Timer
+        // ── Session Timer (purely client-side, 1-second tick) ───────────────
         let sessionSeconds = 0;
         setInterval(() => {
             sessionSeconds++;
@@ -101,89 +89,123 @@
             sessionTimer.innerText = `${h}:${m}:${s}`;
         }, 1000);
 
-        // Client-Side Face Presence Pre-check using Browser Shape Detection API
+        // ── Client-Side Face Pre-check (Browser Shape Detection API) ────────
+        // Saves network: skip sending frame entirely if no face visible in browser
         let browserFaceDetector = null;
         if ('FaceDetector' in window) {
             try {
-                // Allow detection of up to 5 faces in a busy classroom
                 browserFaceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
-            } catch (e) {
-                browserFaceDetector = null;
-            }
+            } catch (e) { browserFaceDetector = null; }
         }
 
-        function startTracking() {
-            setInterval(() => {
-                captureAndVerify();
-            }, 5000); 
+        // ── WebSocket Setup ──────────────────────────────────────────────────
+        // ws:// for HTTP dev, wss:// for HTTPS production — auto-detected
+        const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${wsScheme}://${window.location.host}/ws/attendance/`;
+
+        let socket = null;
+        let frameInterval = null;
+        const SEND_INTERVAL_MS = 5000;   // send one frame every 5 seconds
+
+        function connectWebSocket() {
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log('WS: connected to attendance server');
+                statusIndicator.className = 'status-indicator status-warning';
+                statusIndicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initializing...';
+                // Start camera AFTER socket is confirmed open
+                startCamera();
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.status === 'connected') {
+                    // Server acknowledged — do nothing, startCamera() already called
+                    return;
+                }
+
+                if (data.status === 'success') {
+                    statusIndicator.className = 'status-indicator status-active';
+                    statusIndicator.innerHTML = `<i class="fas fa-check-circle"></i> ${data.message || 'Authorized'}`;
+                    if (data.duration) activeTimer.innerText = data.duration;
+
+                } else if (data.status === 'warning') {
+                    statusIndicator.className = 'status-indicator status-warning';
+                    statusIndicator.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${data.message}`;
+
+                } else {
+                    statusIndicator.className = 'status-indicator status-error';
+                    statusIndicator.innerHTML = `<i class="fas fa-times-circle"></i> ${data.message || 'Verification Failed'}`;
+                }
+            };
+
+            socket.onclose = (event) => {
+                console.warn('WS: connection closed, code=', event.code);
+                clearInterval(frameInterval);
+
+                // Auto-reconnect after 3 seconds (unless teacher deliberately ended class)
+                if (event.code !== 1000 && event.code !== 4001 && event.code !== 4002) {
+                    statusIndicator.className = 'status-indicator status-warning';
+                    statusIndicator.innerHTML = '<i class="fas fa-sync fa-spin"></i> Reconnecting...';
+                    setTimeout(connectWebSocket, 3000);
+                }
+            };
+
+            socket.onerror = (err) => {
+                console.error('WS error:', err);
+                statusIndicator.className = 'status-indicator status-error';
+                statusIndicator.innerHTML = '<i class="fas fa-exclamation-circle"></i> Connection Error';
+            };
         }
 
-        async function captureAndVerify() {
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    // Begin sending frames once video metadata is loaded
+                    video.onloadedmetadata = () => startFrameLoop();
+                })
+                .catch(err => {
+                    console.error("Camera error:", err);
+                    statusIndicator.className = 'status-indicator status-error';
+                    statusIndicator.innerHTML = '<i class="fas fa-exclamation-circle"></i> Camera Error';
+                });
+        }
+
+        function startFrameLoop() {
+            frameInterval = setInterval(captureAndSend, SEND_INTERVAL_MS);
+        }
+
+        async function captureAndSend() {
+            // Skip if socket not ready
+            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // 1. Client-Side Pre-check: If browser native FaceDetector is available,
-            // check if face exists BEFORE sending 300KB payload across the network
+            // ── Client-side pre-check: skip frame if no face visible ─────────
             if (browserFaceDetector) {
                 try {
                     const faces = await browserFaceDetector.detect(canvas);
                     if (!faces || faces.length === 0) {
                         statusIndicator.className = 'status-indicator status-warning';
-                        statusIndicator.innerHTML = '<i class="fas fa-user-slash"></i> No teacher detected in frame';
-                        return; // Zero network call! Server saved from idle processing.
+                        statusIndicator.innerHTML = '<i class="fas fa-user-slash"></i> No face visible — frame skipped';
+                        return; // Zero bytes sent over WebSocket
                     }
-                } catch (err) {
-                    // Fall back to server verification if client API throws
-                }
+                } catch (_) { /* fall through to server verification */ }
             }
 
+            // ── Send frame over persistent WebSocket connection ──────────────
             const imageData = canvas.toDataURL('image/jpeg', 0.8);
-
-            const formData = new FormData();
-            formData.append('face_image', imageData);
-
-            fetch('{% url "update_live_attendance" %}', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: formData
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        statusIndicator.className = 'status-indicator status-active';
-                        statusIndicator.innerHTML = '<i class="fas fa-check-circle"></i> Authorized';
-                        activeTimer.innerText = data.duration;
-                    } else if (data.status === 'warning') {
-                        statusIndicator.className = 'status-indicator status-warning';
-                        statusIndicator.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${data.message}`;
-                    } else {
-                        statusIndicator.className = 'status-indicator status-error';
-                        statusIndicator.innerHTML = '<i class="fas fa-times-circle"></i> Verification Failed';
-                    }
-                })
-                .catch(err => {
-                    console.error("Tracking error:", err);
-                });
+            socket.send(JSON.stringify({ face_image: imageData }));
         }
 
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
+        // Kick off the WebSocket connection on page load
+        connectWebSocket();
     </script>
 </body>
 

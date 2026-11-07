@@ -32,15 +32,39 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv(
 # Application definition
 
 INSTALLED_APPS = [
+    # ── Channels: must be first so Daphne serves ASGI ──
+    'daphne',
+    # ── Django built-ins ──
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # ── Project apps ──
+    'channels',
     'accounts',
     'chatbot',
 ]
+
+# ── Django Channels ──
+# InMemoryChannelLayer is perfect for development (single process, no Redis needed).
+# For production with multiple Daphne workers, switch to RedisChannelLayer:
+#   pip install channels-redis
+#   CHANNEL_LAYERS = {
+#       "default": {
+#           "BACKEND": "channels_redis.core.RedisChannelLayer",
+#           "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
+#       }
+#   }
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
+
+# ── ASGI application path (used by Daphne and Uvicorn) ──
+ASGI_APPLICATION = "facere.asgi.application"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
