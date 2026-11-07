@@ -105,7 +105,8 @@
         let browserFaceDetector = null;
         if ('FaceDetector' in window) {
             try {
-                browserFaceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+                // Allow detection of up to 5 faces in a busy classroom
+                browserFaceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
             } catch (e) {
                 browserFaceDetector = null;
             }

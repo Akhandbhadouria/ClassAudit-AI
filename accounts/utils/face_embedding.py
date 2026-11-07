@@ -6,6 +6,7 @@ from django.conf import settings
 import logging
 
 from .face_detector import detect_faces
+from .face_matcher import match_face
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +47,34 @@ def preprocess_face(face_crop):
     """
     Preprocess cropped face to 112x112 normalized tensor for ArcFace.
     """
-    # Resize to ArcFace standard input size (112, 112)
     face_resized = cv2.resize(face_crop, (112, 112))
     rgb = cv2.cvtColor(face_resized, cv2.COLOR_BGR2RGB)
     tensor = np.transpose(rgb, (2, 0, 1)).astype(np.float32)
     # Normalize: (pixel - 127.5) / 128.0
     tensor = (tensor - 127.5) / 128.0
-    # Add batch dimension: (1, 3, 112, 112)
     return np.expand_dims(tensor, axis=0)
+
+
+def extract_embedding_from_crop(face_crop):
+    """Generates a 512-D L2-normalized embedding vector from a cropped face image."""
+    if face_crop is None or face_crop.size == 0:
+        return None
+    try:
+        blob = preprocess_face(face_crop)
+        session = _get_onnx_session()
+        input_name = session.get_inputs()[0].name
+        output_name = session.get_outputs()[0].name
+
+        output = session.run([output_name], {input_name: blob})[0]
+        embedding = output[0]
+
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+        return embedding
+    except Exception as e:
+        logger.error("Error generating face crop embedding: %s", e)
+        return None
 
 
 def get_embedding(frame, face_location=None):
@@ -91,28 +112,82 @@ def get_embedding(frame, face_location=None):
         x2 = min(w, right + pad_x)
 
         face_crop = frame[y1:y2, x1:x2]
-        if face_crop.size == 0:
-            return None
-
-        # Preprocess and Run ONNX Inference
-        blob = preprocess_face(face_crop)
-        session = _get_onnx_session()
-        input_name = session.get_inputs()[0].name
-        output_name = session.get_outputs()[0].name
-
-        output = session.run([output_name], {input_name: blob})[0]  # Shape: (1, 512)
-        embedding = output[0]
-
-        # L2-normalize embedding vector
-        norm = np.linalg.norm(embedding)
-        if norm > 0:
-            embedding = embedding / norm
-
-        return embedding
+        return extract_embedding_from_crop(face_crop)
 
     except Exception as e:
         logger.error("Error generating face embedding: %s", e)
         return None
+
+
+def get_all_embeddings(frame):
+    """
+    Detects all faces in the frame and returns their bounding boxes and embeddings.
+    Used for multi-face presence detection (e.g. teacher + students in frame).
+    
+    Returns:
+        list of tuples: [(face_location, embedding), ...]
+    """
+    if frame is None:
+        return []
+
+    results = []
+    locations = detect_faces(frame)
+    if not locations:
+        return []
+
+    h, w = frame.shape[:2]
+    for loc in locations:
+        top, right, bottom, left = loc
+        pad_y = int((bottom - top) * 0.1)
+        pad_x = int((right - left) * 0.1)
+        y1 = max(0, top - pad_y)
+        y2 = min(h, bottom + pad_y)
+        x1 = max(0, left - pad_x)
+        x2 = min(w, right + pad_x)
+
+        face_crop = frame[y1:y2, x1:x2]
+        emb = extract_embedding_from_crop(face_crop)
+        if emb is not None:
+            results.append((loc, emb))
+
+    return results
+
+
+def find_target_face_in_frame(frame, target_embedding, threshold=0.45):
+    """
+    Scans ALL detected faces in the frame (teacher + any students/colleagues)
+    and checks if the target teacher's face is present.
+    
+    Args:
+        frame: OpenCV BGR image
+        target_embedding: Teacher's registered 512-D embedding
+        threshold: Max distance cutoff (default 0.45)
+        
+    Returns:
+        (found: bool, best_match_loc: tuple or None, total_faces: int)
+    """
+    all_faces = get_all_embeddings(frame)
+    if not all_faces:
+        return False, None, 0
+
+    best_match = None
+    best_dist = 1.0
+
+    for loc, emb in all_faces:
+        u = np.asarray(target_embedding, dtype=np.float32)
+        v = np.asarray(emb, dtype=np.float32)
+        
+        sim = float(np.dot(u, v))
+        dist = 1.0 - sim
+
+        if dist < threshold and dist < best_dist:
+            best_dist = dist
+            best_match = loc
+
+    if best_match is not None:
+        return True, best_match, len(all_faces)
+
+    return False, None, len(all_faces)
 
 
 def average_embeddings(embeddings):

@@ -10,7 +10,7 @@ import calendar
 import os 
 import numpy as np 
 import cv2 
-from .utils.face_embedding import get_embedding 
+from .utils.face_embedding import get_embedding, find_target_face_in_frame
 from .utils.face_matcher import match_face
 from .utils.liveness_detector import check_liveness_challenge, check_single_frame_liveness
 import json
@@ -801,8 +801,6 @@ def update_live_attendance(request):
             else:
                 # Fallback: Try to create embedding from existing UserImages
                 logger.info("Embedding not found for %s, attempting to generate from stored image.", request.user.username)
-                
-                # Ensure directory exists first!
                 os.makedirs(user_dir, exist_ok=True)
                 
                 user_image = UserImages.objects.filter(user=request.user).first()
@@ -823,9 +821,13 @@ def update_live_attendance(request):
             if stored_emb is None:
                  return JsonResponse({'status': 'error', 'message': 'Registration data missing. Please re-register.'})
             
-            if match_face(stored_emb, live_emb):
-                # Increment active duration
-                # Assuming this endpoint is called every 5 seconds
+            # --- Multi-Face Presence Resolution ---
+            # If multiple faces appear (e.g. teacher with students or colleagues in classroom),
+            # scan all detected faces to locate the teacher instead of dropping the frame.
+            is_matched, matched_box, total_faces = find_target_face_in_frame(frame, stored_emb)
+            
+            if is_matched:
+                # Increment active duration (5 seconds)
                 session.total_active_duration += datetime.timedelta(seconds=5)
                 session.save()
                 
@@ -834,14 +836,24 @@ def update_live_attendance(request):
                 minutes = total_seconds // 60
                 seconds = total_seconds % 60
                 duration_str = f"{minutes}m {seconds}s"
+
+                message = 'Authorized'
+                if total_faces > 1:
+                    message = f'Authorized (Teacher identified among {total_faces} people in frame)'
                 
                 return JsonResponse({
                     'status': 'success', 
-                    'message': 'Authorized',
-                    'duration': duration_str
+                    'message': message,
+                    'duration': duration_str,
+                    'total_faces': total_faces
                 })
             else:
-                return JsonResponse({'status': 'warning', 'message': 'Unknown face detected'})
+                if total_faces > 0:
+                    return JsonResponse({
+                        'status': 'warning', 
+                        'message': f'{total_faces} face(s) visible, but teacher not identified.'
+                    })
+                return JsonResponse({'status': 'warning', 'message': 'No face detected in camera.'})
 
         except Exception as e:
             logger.error("Live attendance update error: %s", e)
